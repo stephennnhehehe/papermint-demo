@@ -8,3 +8,4 @@ coverage
 tsconfig.tsbuildinfo
 tmp
 .DS_Store
+.vercel
