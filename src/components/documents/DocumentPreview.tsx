@@ -1,0 +1,205 @@
+import { calculateTotals, formatAud, lineGstAmount, lineTotal } from "@/lib/calculations";
+import type { Language } from "@/lib/i18n";
+import type { PaperDocument } from "@/lib/types";
+
+export function DocumentPreview({
+  document,
+  language
+}: {
+  document: PaperDocument;
+  language: Language;
+}) {
+  const totals = calculateTotals(
+    document.lineItems,
+    document.orderDiscount,
+    document.gstEnabled,
+    document.gstRate
+  );
+  const labels =
+    language === "zh"
+      ? {
+          invoice: "TAX INVOICE",
+          quote: "QUOTE",
+          issue: "日期",
+          due: "付款期限",
+          valid: "有效期至",
+          from: "From",
+          bill: "Bill To",
+          ship: "Ship To",
+          desc: "描述",
+          qty: "数量",
+          price: "单价",
+          itemDiscount: "折扣",
+          gstColumn: "GST",
+          amount: "金额",
+          subtotal: "小计",
+          discount: "整单折扣",
+          gst: "GST",
+          total: "总计",
+          notes: "备注",
+          payment: "付款方式"
+        }
+      : {
+          invoice: "TAX INVOICE",
+          quote: "QUOTE",
+          issue: "Issue date",
+          due: "Due date",
+          valid: "Valid until",
+          from: "From",
+          bill: "Bill To",
+          ship: "Ship To",
+          desc: "Description",
+          qty: "Qty",
+          price: "Unit",
+          itemDiscount: "Discount",
+          gstColumn: "GST",
+          amount: "Amount",
+          subtotal: "Subtotal",
+          discount: "Order discount",
+          gst: "GST",
+          total: "Total",
+          notes: "Notes",
+          payment: "Payment"
+        };
+  const orderDiscountLabel =
+    document.orderDiscount.type === "percent" && document.orderDiscount.value > 0
+      ? `${labels.discount} (${document.orderDiscount.value}%)`
+      : labels.discount;
+
+  return (
+    <div className="print-page mx-auto min-h-[1120px] w-full max-w-[794px] rounded-lg border border-[var(--line)] bg-white p-7 text-[#17211b] shadow-sm sm:p-10">
+      <div className="flex flex-col justify-between gap-6 border-b border-[#dfe6df] pb-7 sm:flex-row sm:items-start">
+        <div>
+          <p className="text-sm font-black uppercase tracking-normal text-[var(--mint-dark)]">
+            {document.type === "invoice" ? labels.invoice : labels.quote}
+          </p>
+          <h2 className="mt-2 break-words text-3xl font-black tracking-normal">
+            {document.number || "DRAFT"}
+          </h2>
+          <p className="mt-2 text-sm font-semibold text-[#66736b]">
+            {labels.issue}: {document.issueDate || "-"}
+            <br />
+            {document.type === "invoice" ? labels.due : labels.valid}:{" "}
+            {document.type === "invoice" ? document.dueDate || "-" : document.validUntil || "-"}
+          </p>
+        </div>
+        {document.logoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img alt="Company logo" className="h-20 max-w-40 object-contain" src={document.logoUrl} />
+        ) : (
+          <div className="grid h-20 w-32 place-items-center rounded-lg border border-dashed border-[#dfe6df] text-sm font-black text-[#66736b]">
+            PaperMint
+          </div>
+        )}
+      </div>
+
+      <div className="grid gap-5 border-b border-[#dfe6df] py-7 md:grid-cols-3">
+        <PartyBlock label={labels.from} party={document.company} />
+        <PartyBlock label={labels.bill} party={document.billTo} />
+        {document.shipTo ? <PartyBlock label={labels.ship} party={document.shipTo} /> : null}
+      </div>
+
+      <div className="overflow-hidden py-7">
+        <table className="w-full table-fixed border-collapse text-left text-sm">
+          <thead>
+            <tr className="border-b border-[#dfe6df] text-xs uppercase text-[#66736b]">
+              <th className="w-[30%] py-3 pr-2">{labels.desc}</th>
+              <th className="w-[8%] px-2 text-right">{labels.qty}</th>
+              <th className="w-[14%] px-2 text-right">{labels.price}</th>
+              <th className="w-[14%] px-2 text-right">{labels.itemDiscount}</th>
+              <th className="w-[12%] px-2 text-right">{labels.gstColumn}</th>
+              <th className="w-[22%] py-3 pl-2 text-right">{labels.amount}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {document.lineItems.map((item) => (
+              <tr className="border-b border-[#eef2ef]" key={item.id}>
+                <td className="py-4 pr-2 align-top">
+                  <p className="break-words font-black">{item.description || "Item"}</p>
+                  {item.details ? (
+                    <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-5 text-[#66736b]">
+                      {item.details}
+                    </p>
+                  ) : null}
+                </td>
+                <td className="px-2 py-4 text-right align-top">{item.quantity}</td>
+                <td className="px-2 py-4 text-right align-top">{formatAud(item.unitPrice)}</td>
+                <td
+                  className={`px-2 py-4 text-right align-top font-bold ${
+                    item.discount.value > 0 ? "text-[var(--rose)]" : "text-[#66736b]"
+                  }`}
+                >
+                  {formatLineItemDiscount(item)}
+                </td>
+                <td className="px-2 py-4 text-right align-top">
+                  {formatAud(lineGstAmount(item, document.lineItems, document.orderDiscount, document.gstEnabled, document.gstRate))}
+                </td>
+                <td className="py-4 pl-2 text-right align-top">
+                  <p className="font-black">{formatAud(lineTotal(item))}</p>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="ml-auto grid max-w-sm gap-2 text-sm">
+        <AmountRow label={labels.subtotal} value={formatAud(totals.subtotal)} />
+        {totals.orderDiscountTotal > 0 ? (
+          <AmountRow label={orderDiscountLabel} value={`-${formatAud(totals.orderDiscountTotal)}`} />
+        ) : null}
+        {document.gstEnabled ? (
+          <AmountRow label={`${labels.gst} ${document.gstRate}%`} value={formatAud(totals.gst)} />
+        ) : null}
+        <div className="mt-2 flex items-center justify-between rounded-lg bg-[#17211b] px-4 py-3 text-white">
+          <span className="font-black">{labels.total}</span>
+          <span className="text-xl font-black tracking-normal">{formatAud(totals.total)}</span>
+        </div>
+      </div>
+
+      <div className="mt-8 grid gap-5 border-t border-[#dfe6df] pt-6 md:grid-cols-2">
+        {document.paymentMethods ? (
+          <TextBlock label={labels.payment} value={document.paymentMethods} />
+        ) : null}
+        {document.notes ? <TextBlock label={labels.notes} value={document.notes} /> : null}
+      </div>
+    </div>
+  );
+}
+
+function formatLineItemDiscount(item: PaperDocument["lineItems"][number]) {
+  if (item.discount.value <= 0) return "0";
+  return item.discount.type === "percent" ? `${item.discount.value}%` : formatAud(item.discount.value);
+}
+
+function PartyBlock({ label, party }: { label: string; party: PaperDocument["company"] }) {
+  return (
+    <div className="min-w-0">
+      <p className="mb-2 text-xs font-black uppercase tracking-normal text-[#66736b]">{label}</p>
+      <p className="break-words text-base font-black">{party.name || "-"}</p>
+      <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-[#66736b]">
+        {[party.address, party.email, party.phone, party.abn ? `ABN ${party.abn}` : ""]
+          .filter(Boolean)
+          .join("\n")}
+      </p>
+    </div>
+  );
+}
+
+function AmountRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-5">
+      <span className="font-semibold text-[#66736b]">{label}</span>
+      <span className="font-black">{value}</span>
+    </div>
+  );
+}
+
+function TextBlock({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="mb-2 text-xs font-black uppercase tracking-normal text-[#66736b]">{label}</p>
+      <p className="whitespace-pre-wrap break-words text-sm leading-6 text-[#66736b]">{value}</p>
+    </div>
+  );
+}
