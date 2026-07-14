@@ -22,7 +22,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(configured);
 
   useEffect(() => {
-    const demoEnabled = window.localStorage.getItem("papermint:demo") === "true";
+    const demoEnabled =
+      !configured && window.localStorage.getItem("papermint:demo") === "true";
     if (demoEnabled) {
       setDemo(true);
       setUser(createDemoUser());
@@ -38,6 +39,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    window.localStorage.removeItem("papermint:demo");
+    setDemo(false);
     const supabase = getSupabaseClient();
     let mounted = true;
 
@@ -51,6 +54,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const {
       data: { subscription }
     } = supabase.auth.onAuthStateChange((_event, session) => {
+      window.localStorage.removeItem("papermint:demo");
       setDemo(false);
       setUser(session?.user ?? null);
       setLoading(false);
@@ -63,11 +67,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [configured]);
 
   const startDemo = useCallback(() => {
+    if (configured) return;
     window.localStorage.setItem("papermint:demo", "true");
     setDemo(true);
     setUser(createDemoUser());
     setLoading(false);
-  }, []);
+  }, [configured]);
 
   const signOut = useCallback(async () => {
     window.localStorage.removeItem("papermint:demo");
