@@ -14,6 +14,8 @@ type AuthContextValue = {
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+const demoSessionKey = "papermint:demo-session";
+const legacyDemoKey = "papermint:demo";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const configured = isSupabaseConfigured();
@@ -22,8 +24,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(configured);
 
   useEffect(() => {
-    const demoEnabled =
-      !configured && window.localStorage.getItem("papermint:demo") === "true";
+    const demoEnabled = window.localStorage.getItem(demoSessionKey) === "true";
     if (demoEnabled) {
       setDemo(true);
       setUser(createDemoUser());
@@ -32,14 +33,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (!configured) {
-      window.localStorage.setItem("papermint:demo", "true");
+      window.localStorage.setItem(demoSessionKey, "true");
       setDemo(true);
       setUser(createDemoUser());
       setLoading(false);
       return;
     }
 
-    window.localStorage.removeItem("papermint:demo");
+    window.localStorage.removeItem(legacyDemoKey);
     setDemo(false);
     const supabase = getSupabaseClient();
     let mounted = true;
@@ -54,7 +55,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const {
       data: { subscription }
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      window.localStorage.removeItem("papermint:demo");
+      window.localStorage.removeItem(demoSessionKey);
+      window.localStorage.removeItem(legacyDemoKey);
       setDemo(false);
       setUser(session?.user ?? null);
       setLoading(false);
@@ -67,21 +69,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [configured]);
 
   const startDemo = useCallback(() => {
-    if (configured) return;
-    window.localStorage.setItem("papermint:demo", "true");
+    window.localStorage.setItem(demoSessionKey, "true");
+    window.localStorage.removeItem(legacyDemoKey);
     setDemo(true);
     setUser(createDemoUser());
     setLoading(false);
-  }, [configured]);
+  }, []);
 
   const signOut = useCallback(async () => {
-    window.localStorage.removeItem("papermint:demo");
+    window.localStorage.removeItem(demoSessionKey);
+    window.localStorage.removeItem(legacyDemoKey);
     setDemo(false);
     if (configured) {
       await getSupabaseClient().auth.signOut();
       setUser(null);
     } else {
-      window.localStorage.setItem("papermint:demo", "true");
+      window.localStorage.setItem(demoSessionKey, "true");
       setDemo(true);
       setUser(createDemoUser());
     }

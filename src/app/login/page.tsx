@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FileText, Loader2, LockKeyhole, Sparkles } from "lucide-react";
+import { FileText, Loader2, LockKeyhole, Play, Sparkles } from "lucide-react";
 import { LanguageSwitch } from "@/components/app/LanguageSwitch";
 import { useAuth } from "@/components/app/AuthProvider";
 import { useLanguage } from "@/components/app/LanguageProvider";
@@ -172,11 +172,10 @@ export default function LoginPage() {
                 ? "已有账号？登录"
                 : "Already registered? Sign in"}
           </button>
-          {!configured ? (
-            <button className="btn-secondary border-[var(--mint)] text-[var(--mint-dark)]" onClick={handleDemo} type="button">
-              {language === "zh" ? "无需账号试用 Demo 工作台" : "Try demo workspace without an account"}
-            </button>
-          ) : null}
+          <button className="btn-secondary border-[var(--mint)] text-[var(--mint-dark)]" onClick={handleDemo} type="button">
+            <Play className="h-4 w-4" />
+            {language === "zh" ? "无需账号试用 Demo 工作台" : "Try demo workspace without an account"}
+          </button>
         </section>
       </div>
     </main>
