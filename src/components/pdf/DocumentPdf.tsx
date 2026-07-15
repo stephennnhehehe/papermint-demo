@@ -1,6 +1,5 @@
 import { Document, Image, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 import { calculateTotals, formatAud, lineGstAmount, lineTotal } from "@/lib/calculations";
-import type { Language } from "@/lib/i18n";
 import type { PaperDocument, Party } from "@/lib/types";
 import { registerPdfFonts } from "./fonts";
 
@@ -185,16 +184,25 @@ const styles = StyleSheet.create({
     fontSize: 8,
     fontWeight: 700,
     textAlign: "center"
+  },
+  arabicText: {
+    direction: "rtl",
+    fontFamily: "PaperMintArabic",
+    textAlign: "right"
   }
 });
 
+const arabicTextPattern = /[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff]/;
+
+function userTextStyle(value: string) {
+  return arabicTextPattern.test(value) ? styles.arabicText : {};
+}
+
 export function PaperMintPdf({
   document,
-  language,
   showBranding = false
 }: {
   document: PaperDocument;
-  language: Language;
   showBranding?: boolean;
 }) {
   const totals = calculateTotals(
@@ -203,52 +211,13 @@ export function PaperMintPdf({
     document.gstEnabled,
     document.gstRate
   );
-  const labels =
-    language === "zh"
-      ? {
-          invoice: "TAX INVOICE",
-          quote: "QUOTE",
-          issue: "日期",
-          due: "付款期限",
-          valid: "有效期至",
-          from: "From",
-          bill: "Bill To",
-          ship: "Ship To",
-          desc: "描述",
-          qty: "数量",
-          price: "单价",
-          itemDiscount: "折扣",
-          gstColumn: "GST",
-          amount: "金额",
-          subtotal: "小计",
-          discount: "整单折扣",
-          gst: "GST",
-          total: "总计",
-          payment: "付款方式",
-          notes: "备注"
-        }
-      : {
-          invoice: "TAX INVOICE",
-          quote: "QUOTE",
-          issue: "Issue date",
-          due: "Due date",
-          valid: "Valid until",
-          from: "From",
-          bill: "Bill To",
-          ship: "Ship To",
-          desc: "Description",
-          qty: "Qty",
-          price: "Unit",
-          itemDiscount: "Discount",
-          gstColumn: "GST",
-          amount: "Amount",
-          subtotal: "Subtotal",
-          discount: "Order discount",
-          gst: "GST",
-          total: "Total",
-          payment: "Payment",
-          notes: "Notes"
-        };
+  const labels = {
+    invoice: "TAX INVOICE", quote: "QUOTE", issue: "Issue date", due: "Due date",
+    valid: "Valid until", from: "From", bill: "Bill To", ship: "Ship To",
+    desc: "Description", qty: "Qty", price: "Unit price", itemDiscount: "Discount",
+    gstColumn: "GST", amount: "Amount", subtotal: "Subtotal", discount: "Order discount",
+    gst: "GST", total: "Total", payment: "Payment", notes: "Notes"
+  };
   const orderDiscountLabel =
     document.orderDiscount.type === "percent" && document.orderDiscount.value > 0
       ? `${labels.discount} (${document.orderDiscount.value}%)`
@@ -300,8 +269,8 @@ export function PaperMintPdf({
         {document.lineItems.map((item) => (
           <View key={item.id} style={styles.row}>
             <View style={styles.desc}>
-              <Text style={{ fontWeight: 700 }}>{item.description || "Item"}</Text>
-              {item.details ? <Text style={[styles.muted, { marginTop: 4 }]}>{item.details}</Text> : null}
+              <Text style={[{ fontWeight: 700 }, userTextStyle(item.description)]}>{item.description || "Item"}</Text>
+              {item.details ? <Text style={[styles.muted, { marginTop: 4 }, userTextStyle(item.details)]}>{item.details}</Text> : null}
             </View>
             <Text style={styles.qty}>{item.quantity}</Text>
             <Text style={styles.unit}>{formatAud(item.unitPrice)}</Text>
@@ -333,13 +302,13 @@ export function PaperMintPdf({
           {document.paymentMethods ? (
             <View style={styles.footerBlock}>
               <Text style={styles.sectionLabel}>{labels.payment}</Text>
-              <Text style={styles.muted}>{document.paymentMethods}</Text>
+              <Text style={[styles.muted, userTextStyle(document.paymentMethods)]}>{document.paymentMethods}</Text>
             </View>
           ) : null}
           {document.notes ? (
             <View style={styles.footerBlock}>
               <Text style={styles.sectionLabel}>{labels.notes}</Text>
-              <Text style={styles.muted}>{document.notes}</Text>
+              <Text style={[styles.muted, userTextStyle(document.notes)]}>{document.notes}</Text>
             </View>
           ) : null}
         </View>
@@ -355,15 +324,14 @@ function formatLineItemDiscount(item: PaperDocument["lineItems"][number]) {
 }
 
 function PdfParty({ label, party }: { label: string; party: Party }) {
+  const details = [party.address, party.email, party.phone, party.abn ? `ABN ${party.abn}` : ""]
+    .filter(Boolean)
+    .join("\n");
   return (
     <View style={styles.party}>
       <Text style={styles.sectionLabel}>{label}</Text>
-      <Text style={styles.partyName}>{party.name || "-"}</Text>
-      <Text style={styles.muted}>
-        {[party.address, party.email, party.phone, party.abn ? `ABN ${party.abn}` : ""]
-          .filter(Boolean)
-          .join("\n")}
-      </Text>
+      <Text style={[styles.partyName, userTextStyle(party.name)]}>{party.name || "-"}</Text>
+      <Text style={[styles.muted, userTextStyle(details)]}>{details}</Text>
     </View>
   );
 }

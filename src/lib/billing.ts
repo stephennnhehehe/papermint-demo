@@ -1,4 +1,5 @@
 import type { BillingPlan, BillingStatus } from "./types";
+import { pickLanguage, type Language } from "./i18n";
 
 export const FREE_WEEKLY_DOCUMENT_LIMIT = 5;
 
@@ -69,12 +70,34 @@ export function normalizeBillingStatus(value: {
   };
 }
 
-export function billingErrorMessage(error: unknown, language: "en" | "zh") {
+export function freeDocumentsRemaining(billing: BillingStatus) {
+  if (billing.isPaid || billing.documentsLimit === null) return null;
+  return Math.max(0, billing.documentsLimit - billing.documentsUsed);
+}
+
+export function isFreeDocumentLimitReached(billing: BillingStatus) {
+  const remaining = freeDocumentsRemaining(billing);
+  return remaining !== null && remaining <= 0;
+}
+
+export function isCurrentBillingPlan(billing: BillingStatus, plan: BillingPlan) {
+  return billing.isPaid ? billing.plan === plan : plan === "free";
+}
+
+export function billingErrorMessage(error: unknown, language: Language) {
   const message = error instanceof Error ? error.message : String(error ?? "");
   if (message.includes("FREE_WEEKLY_DOCUMENT_LIMIT_REACHED")) {
-    return language === "zh"
-      ? "本周 5 份免费单据额度已用完。升级后可继续创建且移除 PaperMint 页脚。"
-      : "You have used this week's 5 free documents. Upgrade to keep creating and remove PaperMint branding.";
+    return pickLanguage(language, {
+      en: "You have used this week's 5 free documents. Upgrade to keep creating and remove PaperMint branding.",
+      zh: "本周 5 份免费单据额度已用完。升级后可继续创建且移除 PaperMint 页脚。",
+      vi: "Bạn đã dùng hết 5 chứng từ miễn phí trong tuần. Hãy nâng cấp để tiếp tục tạo chứng từ.",
+      ar: "لقد استخدمت المستندات المجانية الخمسة لهذا الأسبوع. قم بالترقية لمواصلة الإنشاء."
+    });
   }
-  return message || (language === "zh" ? "操作失败，请重试。" : "Something went wrong. Please try again.");
+  return message || pickLanguage(language, {
+    en: "Something went wrong. Please try again.",
+    zh: "操作失败，请重试。",
+    vi: "Đã xảy ra lỗi. Vui lòng thử lại.",
+    ar: "حدث خطأ. يرجى المحاولة مرة أخرى."
+  });
 }

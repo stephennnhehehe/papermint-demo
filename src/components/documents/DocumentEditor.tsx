@@ -3,15 +3,17 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Copy, Download, Eye, EyeOff, Loader2, Plus, Printer, Save, Trash2, Upload } from "lucide-react";
+import { Check, Copy, Download, Eye, EyeOff, Loader2, LockKeyhole, Plus, Printer, Save, Trash2, Upload } from "lucide-react";
 import { pdf } from "@react-pdf/renderer";
 import { AppShell } from "@/components/app/AppShell";
 import { ProtectedRoute } from "@/components/app/ProtectedRoute";
 import { useAuth } from "@/components/app/AuthProvider";
 import { useBilling } from "@/components/app/BillingProvider";
 import { useLanguage } from "@/components/app/LanguageProvider";
+import { useToast } from "@/components/app/ToastProvider";
 import { calculateTotals, formatAud, lineTotal } from "@/lib/calculations";
-import { billingErrorMessage } from "@/lib/billing";
+import { billingErrorMessage, isFreeDocumentLimitReached } from "@/lib/billing";
+import { pickLanguage, type Language } from "@/lib/i18n";
 import {
   createEmptyDocument,
   createLineItem,
@@ -109,18 +111,22 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
   const requestedType = searchParams.get("type") === "quote" ? "quote" : "invoice";
   const draftSession = searchParams.get("session");
   const { user } = useAuth();
-  const { billing, refreshBilling } = useBilling();
+  const { billing, loading: billingLoading, refreshBilling } = useBilling();
   const { t, language } = useLanguage();
+  const copy = <T,>(values: { en: T; zh?: T; vi?: T; ar?: T }) => pickLanguage(language, values);
+  const { showToast } = useToast();
   const [paper, setPaper] = useState<PaperDocument | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [companyProfiles, setCompanyProfiles] = useState<CompanyRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [saveConfirmed, setSaveConfirmed] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [message, setMessage] = useState("");
   const [autoSavedAt, setAutoSavedAt] = useState("");
   const [showPreview, setShowPreview] = useState(false);
   const [selectedCompanyProfileId, setSelectedCompanyProfileId] = useState("");
+  const limitReached = isFreeDocumentLimitReached(billing);
 
   const draftKey = useMemo(() => {
     if (!user) return "";
@@ -284,7 +290,14 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
   async function handleSave(event?: FormEvent) {
     event?.preventDefault();
     if (!user || !paper) return;
+    if (!documentId && limitReached) {
+      const issue = billingErrorMessage(new Error("FREE_WEEKLY_DOCUMENT_LIMIT_REACHED"), language);
+      setMessage(issue);
+      showToast(issue, "error");
+      return;
+    }
     setSaving(true);
+    setSaveConfirmed(false);
     setMessage("");
     try {
       const saved = await saveDocument(user.id, {
@@ -293,11 +306,17 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
       });
       setPaper(saved);
       if (draftKey) window.localStorage.removeItem(draftKey);
-      setMessage(language === "zh" ? "已保存。" : "Saved.");
+      const savedMessage = pickLanguage(language, { en: "Document saved.", zh: "单据已保存。", vi: "Đã lưu chứng từ.", ar: "تم حفظ المستند." });
+      setMessage(savedMessage);
+      setSaveConfirmed(true);
+      showToast(savedMessage);
+      window.setTimeout(() => setSaveConfirmed(false), 2200);
       await refreshBilling();
       if (!documentId) router.replace(`/documents/${saved.id}`);
     } catch (error) {
-      setMessage(billingErrorMessage(error, language));
+      const issue = billingErrorMessage(error, language);
+      setMessage(issue);
+      showToast(issue, "error");
     } finally {
       setSaving(false);
     }
@@ -316,9 +335,13 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
       });
       setCustomers((current) => [customer, ...current.filter((item) => item.id !== customer.id)]);
       updatePaper({ customerId: customer.id });
-      setMessage(language === "zh" ? "客户已保存。" : "Customer saved.");
+      const savedMessage = pickLanguage(language, { en: "Customer saved and selected.", zh: "客户已保存并选中。", vi: "Đã lưu và chọn khách hàng.", ar: "تم حفظ العميل واختياره." });
+      setMessage(savedMessage);
+      showToast(savedMessage);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to save customer.");
+      const issue = error instanceof Error ? error.message : "Unable to save customer.";
+      setMessage(issue);
+      showToast(issue, "error");
     }
   }
 
@@ -338,9 +361,13 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
         company,
         ...current.filter((item) => item.id !== company.id)
       ]);
-      setMessage(language === "zh" ? "开票方资料已保存。" : "Issuer profile saved.");
+      const savedMessage = pickLanguage(language, { en: "Issuer profile saved.", zh: "开票方资料已保存。", vi: "Đã lưu hồ sơ bên phát hành.", ar: "تم حفظ ملف جهة الإصدار." });
+      setMessage(savedMessage);
+      showToast(savedMessage);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to save issuer profile.");
+      const issue = error instanceof Error ? error.message : "Unable to save issuer profile.";
+      setMessage(issue);
+      showToast(issue, "error");
     }
   }
 
@@ -350,9 +377,13 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
     try {
       const logoUrl = await uploadLogo(file, user.id);
       updatePaper({ logoUrl });
-      setMessage(language === "zh" ? "Logo 已上传。" : "Logo uploaded.");
+      const uploaded = pickLanguage(language, { en: "Logo uploaded.", zh: "Logo 已上传。", vi: "Đã tải logo lên.", ar: "تم رفع الشعار." });
+      setMessage(uploaded);
+      showToast(uploaded);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to upload logo.");
+      const issue = error instanceof Error ? error.message : "Unable to upload logo.";
+      setMessage(issue);
+      showToast(issue, "error");
     } finally {
       setSaving(false);
     }
@@ -362,13 +393,16 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
     if (!paper) return;
     setDownloading(true);
     try {
-      const blob = await pdf(<PaperMintPdf document={paper} language={language} showBranding={billing.showBranding} />).toBlob();
+      const blob = await pdf(<PaperMintPdf document={paper} showBranding={billing.showBranding} />).toBlob();
       const url = URL.createObjectURL(blob);
       const anchor = window.document.createElement("a");
       anchor.href = url;
       anchor.download = `${paper.type}-${paper.number || "draft"}.pdf`;
       anchor.click();
       URL.revokeObjectURL(url);
+      showToast(pickLanguage(language, { en: "PDF downloaded.", zh: "PDF 已下载。", vi: "Đã tải PDF.", ar: "تم تنزيل ملف PDF." }));
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Unable to download PDF.", "error");
     } finally {
       setDownloading(false);
     }
@@ -382,11 +416,18 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
   return (
     <ProtectedRoute>
       <AppShell>
-        {loading || !paper || !totals ? (
+        {billingLoading || loading || !paper || !totals ? (
           <div className="panel flex items-center gap-3 p-5 text-sm font-semibold text-[var(--muted)]">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Loading document
+            {copy({ en: "Loading document", zh: "正在加载单据", vi: "Đang tải chứng từ", ar: "جارٍ تحميل المستند" })}
           </div>
+        ) : !documentId && limitReached ? (
+          <section className="mx-auto max-w-xl rounded-lg border border-amber-300 bg-amber-50 p-7 text-center shadow-sm">
+            <span className="mx-auto grid h-12 w-12 place-items-center rounded-lg bg-amber-100 text-amber-800"><LockKeyhole className="h-6 w-6" /></span>
+            <h1 className="mt-4 text-2xl font-black">{pickLanguage(language, { en: "Weekly limit reached", zh: "本周额度已用完", vi: "Đã hết hạn mức tuần", ar: "تم بلوغ الحد الأسبوعي" })}</h1>
+            <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{billingErrorMessage(new Error("FREE_WEEKLY_DOCUMENT_LIMIT_REACHED"), language)}</p>
+            <div className="mt-5 flex flex-wrap justify-center gap-2"><Link className="btn-primary" href="/pricing">{pickLanguage(language, { en: "View unlimited plans", zh: "查看不限量方案", vi: "Xem gói không giới hạn", ar: "عرض الخطط غير المحدودة" })}</Link><Link className="btn-secondary" href="/documents">{t("documents")}</Link></div>
+          </section>
         ) : (
           <form className="grid gap-5 pb-24" onSubmit={handleSave}>
             <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start">
@@ -405,7 +446,7 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
                       {paper.type === "invoice" ? t("invoice") : t("quote")}
                     </h1>
                     <p className="text-sm font-semibold text-[var(--muted)]">
-                      {language === "zh" ? "编辑、预览并保存你的单据。" : "Edit, preview and save your document."}
+                      {copy({ en: "Edit, preview and save your document.", zh: "编辑、预览并保存你的单据。", vi: "Chỉnh sửa, xem trước và lưu chứng từ.", ar: "عدّل المستند وعاينه واحفظه." })}
                     </p>
                   </div>
                 </div>
@@ -413,8 +454,8 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
                 <div className="grid gap-3">
                   <SegmentedType value={paper.type} onChange={(type) => updatePaper({ type, title: type === "invoice" ? "TAX INVOICE" : "QUOTE" })} />
                   <Select label={t("status")} value={paper.status} onChange={(value) => updatePaper({ status: value as DocumentStatus })} options={statuses.map((status) => ({ label: status, value: status }))} />
-                  <Field label={language === "zh" ? "单据编号" : "Number"} value={paper.number} onChange={(value) => updatePaper({ number: sanitizeDocumentNumber(value) })} />
-                  <Field label={language === "zh" ? "标题" : "Title"} value={paper.title} onChange={(value) => updatePaper({ title: value })} />
+                  <Field label={copy({ en: "Number", zh: "单据编号", vi: "Số chứng từ", ar: "رقم المستند" })} value={paper.number} onChange={(value) => updatePaper({ number: sanitizeDocumentNumber(value) })} />
+                  <Field label={copy({ en: "Title", zh: "标题", vi: "Tiêu đề", ar: "العنوان" })} value={paper.title} onChange={(value) => updatePaper({ title: value })} />
                 </div>
 
                 <div className="mt-3 grid gap-3">
@@ -422,7 +463,7 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
                   {paper.type === "invoice" ? (
                     <Field label={t("dueDate")} type="date" value={paper.dueDate} onChange={(value) => updatePaper({ dueDate: value })} />
                   ) : (
-                    <Field label={language === "zh" ? "有效期至" : "Valid until"} type="date" value={paper.validUntil} onChange={(value) => updatePaper({ validUntil: value })} />
+                    <Field label={copy({ en: "Valid until", zh: "有效期至", vi: "Có hiệu lực đến", ar: "صالح حتى" })} type="date" value={paper.validUntil} onChange={(value) => updatePaper({ validUntil: value })} />
                   )}
                   <Select label="Currency" value="AUD" onChange={() => undefined} options={[{ label: "AUD · Australian Dollar", value: "AUD" }]} />
                 </div>
@@ -434,8 +475,8 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
                 )}
                 {!billing.isPaid ? (
                   <div className={`mt-4 rounded-lg border p-3 text-sm ${billing.documentsUsed >= (billing.documentsLimit ?? 5) && !documentId ? "border-amber-200 bg-amber-50 text-amber-900" : "border-[var(--line)] bg-[#f8faf7] text-[var(--muted)]"}`}>
-                    <p className="font-black">{billing.documentsUsed}/{billing.documentsLimit ?? 5} {language === "zh" ? "份本周免费单据" : "free documents used this week"}</p>
-                    {billing.documentsUsed >= (billing.documentsLimit ?? 5) && !documentId ? <Link className="mt-1 inline-block font-black text-[var(--mint-dark)] underline" href="/pricing">{language === "zh" ? "查看不限量方案" : "View unlimited plans"}</Link> : null}
+                    <p className="font-black">{copy({ en: `${billing.documentsUsed}/${billing.documentsLimit ?? 5} free documents used this week`, zh: `${billing.documentsUsed}/${billing.documentsLimit ?? 5} 份本周免费单据`, vi: `Đã dùng ${billing.documentsUsed}/${billing.documentsLimit ?? 5} chứng từ miễn phí tuần này`, ar: `تم استخدام ${billing.documentsUsed}/${billing.documentsLimit ?? 5} مستندات مجانية هذا الأسبوع` })}</p>
+                    {billing.documentsUsed >= (billing.documentsLimit ?? 5) && !documentId ? <Link className="mt-1 inline-block font-black text-[var(--mint-dark)] underline" href="/pricing">{copy({ en: "View unlimited plans", zh: "查看不限量方案", vi: "Xem gói không giới hạn", ar: "عرض الخطط غير المحدودة" })}</Link> : null}
                   </div>
                 ) : null}
               </div>
@@ -443,18 +484,18 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
               <section className="grid gap-5 lg:grid-cols-2 xl:col-start-1 xl:row-start-1">
                 <div className="panel p-5">
                   <div className="mb-4 flex items-center justify-between gap-3">
-                    <h2 className="text-xl font-black tracking-normal">{language === "zh" ? "开票方" : "From"}</h2>
+                    <h2 className="text-xl font-black tracking-normal">{copy({ en: "From", zh: "开票方", vi: "Bên phát hành", ar: "جهة الإصدار" })}</h2>
                     <button className="btn-secondary px-3 py-2 text-sm" onClick={handleRememberCompany} type="button">
                       <Plus className="h-4 w-4" />
-                      {language === "zh" ? "保存开票方" : "Remember"}
+                      {copy({ en: "Remember", zh: "保存开票方", vi: "Lưu bên phát hành", ar: "حفظ جهة الإصدار" })}
                     </button>
                   </div>
                   <div className="mb-3">
                     <Select
-                      label={language === "zh" ? "选择开票方" : "Issuer profile"}
+                      label={copy({ en: "Issuer profile", zh: "选择开票方", vi: "Hồ sơ bên phát hành", ar: "ملف جهة الإصدار" })}
                       onChange={handleCompanySelect}
                       options={[
-                        { label: language === "zh" ? "手动填写" : "Manual entry", value: "" },
+                        { label: copy({ en: "Manual entry", zh: "手动填写", vi: "Nhập thủ công", ar: "إدخال يدوي" }), value: "" },
                         ...companyProfiles.map((company) => ({
                           label: company.is_default
                             ? `${company.business_name} · Default`
@@ -472,16 +513,16 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
                     <h2 className="text-xl font-black tracking-normal">{t("billTo")}</h2>
                     <button className="btn-secondary px-3 py-2 text-sm" onClick={handleRememberCustomer} type="button">
                       <Plus className="h-4 w-4" />
-                      {language === "zh" ? "保存为客户" : "Remember"}
+                      {copy({ en: "Remember", zh: "保存为客户", vi: "Lưu khách hàng", ar: "حفظ العميل" })}
                     </button>
                   </div>
                   <div className="mb-3">
                     <Select
-                      label={language === "zh" ? "选择客户" : "Customer"}
+                      label={t("customers")}
                       value={paper.customerId ?? ""}
                       onChange={handleCustomerSelect}
                       options={[
-                        { label: language === "zh" ? "手动填写" : "Manual entry", value: "" },
+                        { label: copy({ en: "Manual entry", zh: "手动填写", vi: "Nhập thủ công", ar: "إدخال يدوي" }), value: "" },
                         ...customers.map((customer) => ({ label: customer.name, value: customer.id }))
                       ]}
                     />
@@ -499,7 +540,7 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
                       {t("copyBillTo")}
                     </button>
                     <button className="btn-secondary px-3 py-2 text-sm" onClick={() => updatePaper({ shipTo: paper.shipTo ? null : { ...emptyParty } })} type="button">
-                      {paper.shipTo ? (language === "zh" ? "移除" : "Remove") : (language === "zh" ? "添加" : "Add")}
+                      {paper.shipTo ? copy({ en: "Remove", zh: "移除", vi: "Xóa", ar: "إزالة" }) : copy({ en: "Add", zh: "添加", vi: "Thêm", ar: "إضافة" })}
                     </button>
                   </div>
                 </div>
@@ -507,7 +548,7 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
                   <PartyFields party={paper.shipTo} onChange={(patch) => updateParty("shipTo", patch)} />
                 ) : (
                   <div className="rounded-lg border border-dashed border-[var(--line)] p-6 text-sm font-semibold text-[var(--muted)]">
-                    {language === "zh" ? "可选收货地址。" : "Optional shipping address."}
+                    {copy({ en: "Optional shipping address.", zh: "可选收货地址。", vi: "Địa chỉ giao hàng không bắt buộc.", ar: "عنوان الشحن اختياري." })}
                   </div>
                 )}
               </section>
@@ -517,7 +558,7 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
                   <h2 className="text-xl font-black tracking-normal">{t("lineItems")}</h2>
                   <button className="btn-secondary px-3 py-2 text-sm" onClick={() => updatePaper({ lineItems: [...paper.lineItems, createLineItem()] })} type="button">
                     <Plus className="h-4 w-4" />
-                    {language === "zh" ? "添加项目" : "Add item"}
+                    {copy({ en: "Add item", zh: "添加项目", vi: "Thêm hạng mục", ar: "إضافة بند" })}
                   </button>
                 </div>
 
@@ -549,7 +590,7 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
                       ) : null}
                       <label className="btn-secondary cursor-pointer">
                         <Upload className="h-4 w-4" />
-                        {language === "zh" ? "上传" : "Upload"}
+                        {copy({ en: "Upload", zh: "上传", vi: "Tải lên", ar: "رفع" })}
                         <input accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(event) => handleLogo(event.target.files?.[0])} type="file" />
                       </label>
                     </div>
@@ -557,7 +598,7 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
                 </div>
 
                 <div className="panel grid gap-3 p-5">
-                  <h2 className="text-xl font-black tracking-normal">{language === "zh" ? "金额" : "Totals"}</h2>
+                  <h2 className="text-xl font-black tracking-normal">{copy({ en: "Totals", zh: "金额", vi: "Tổng tiền", ar: "الإجماليات" })}</h2>
                   <DiscountEditor
                     discount={paper.orderDiscount}
                     label={t("discount")}
@@ -592,9 +633,9 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
                   {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                   {t("downloadPdf")}
                 </button>
-                <button className="btn-primary" disabled={saving} type="submit">
-                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                  {t("save")}
+                <button className="btn-primary min-w-28" disabled={saving || (!documentId && limitReached)} type="submit">
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : saveConfirmed ? <Check className="h-4 w-4" /> : <Save className="h-4 w-4" />}
+                  {saving ? pickLanguage(language, { en: "Saving...", zh: "保存中...", vi: "Đang lưu...", ar: "جارٍ الحفظ..." }) : saveConfirmed ? pickLanguage(language, { en: "Saved", zh: "已保存", vi: "Đã lưu", ar: "تم الحفظ" }) : t("save")}
                 </button>
               </div>
             </div>
@@ -615,10 +656,10 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
                 <h2 className="text-xl font-black tracking-normal">{t("preview")}</h2>
                 <button className="btn-secondary px-3 py-2" onClick={() => setShowPreview(false)} type="button">
                   <EyeOff className="h-4 w-4" />
-                  {language === "zh" ? "关闭" : "Close"}
+                  {copy({ en: "Close", zh: "关闭", vi: "Đóng", ar: "إغلاق" })}
                 </button>
               </div>
-              <DocumentPreview document={paper} language={language} showBranding={billing.showBranding} />
+              <DocumentPreview document={paper} showBranding={billing.showBranding} />
             </div>
           </div>
         ) : null}
@@ -634,6 +675,7 @@ function SegmentedType({
   value: DocumentType;
   onChange: (value: DocumentType) => void;
 }) {
+  const { t } = useLanguage();
   return (
     <label>
       <span className="label">Type</span>
@@ -647,7 +689,7 @@ function SegmentedType({
             onClick={() => onChange(type)}
             type="button"
           >
-            {type}
+            {type === "invoice" ? t("invoice") : t("quote")}
           </button>
         ))}
       </div>
@@ -679,15 +721,17 @@ function PartyFields({
   party: Party;
   onChange: (patch: Partial<Party>) => void;
 }) {
+  const { language } = useLanguage();
+  const copy = <T,>(values: { en: T; zh?: T; vi?: T; ar?: T }) => pickLanguage(language, values);
   return (
     <div className="grid gap-3">
-      <Field label="Name" value={party.name} onChange={(value) => onChange({ name: value })} />
+      <Field label={copy({ en: "Name", zh: "名称", vi: "Tên", ar: "الاسم" })} value={party.name} onChange={(value) => onChange({ name: value })} />
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Email" type="email" value={party.email} onChange={(value) => onChange({ email: value })} />
-        <Field label="Phone" value={party.phone} onChange={(value) => onChange({ phone: value })} />
+        <Field label={copy({ en: "Phone", zh: "电话", vi: "Điện thoại", ar: "الهاتف" })} value={party.phone} onChange={(value) => onChange({ phone: value })} />
       </div>
       <Field label="ABN" value={party.abn} onChange={(value) => onChange({ abn: value })} />
-      <TextArea label="Address" value={party.address} onChange={(value) => onChange({ address: value })} />
+      <TextArea label={copy({ en: "Address", zh: "地址", vi: "Địa chỉ", ar: "العنوان" })} value={party.address} onChange={(value) => onChange({ address: value })} />
     </div>
   );
 }
@@ -703,15 +747,16 @@ function LineItemEditor({
   item: LineItem;
   index: number;
   canDelete: boolean;
-  language: "en" | "zh";
+  language: Language;
   onChange: (patch: Partial<LineItem>) => void;
   onDelete: () => void;
 }) {
+  const copy = <T,>(values: { en: T; zh?: T; vi?: T; ar?: T }) => pickLanguage(language, values);
   return (
     <article className="rounded-lg border border-[var(--line)] bg-white/75 p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
         <h3 className="text-sm font-black text-[var(--muted)]">
-          {language === "zh" ? "项目" : "Item"} #{index + 1}
+          {copy({ en: "Item", zh: "项目", vi: "Hạng mục", ar: "البند" })} #{index + 1}
         </h3>
         <button className="icon-btn text-[var(--rose)]" disabled={!canDelete} onClick={onDelete} title="Delete item" type="button">
           <Trash2 className="h-4 w-4" />
@@ -719,15 +764,15 @@ function LineItemEditor({
       </div>
       <div className="grid gap-3 lg:grid-cols-[1fr_82px_120px_105px_170px_120px]">
         <div className="grid gap-3">
-          <Field label={language === "zh" ? "描述" : "Description"} value={item.description} onChange={(value) => onChange({ description: value })} />
-          <TextArea label={language === "zh" ? "明细" : "Details"} value={item.details} onChange={(value) => onChange({ details: value })} />
+          <Field label={copy({ en: "Description", zh: "描述", vi: "Mô tả", ar: "الوصف" })} value={item.description} onChange={(value) => onChange({ description: value })} />
+          <TextArea label={copy({ en: "Details", zh: "明细", vi: "Chi tiết", ar: "التفاصيل" })} value={item.details} onChange={(value) => onChange({ details: value })} />
         </div>
-        <Field label={language === "zh" ? "数量" : "Qty"} step="1" type="number" value={String(item.quantity)} onChange={(value) => onChange({ quantity: Number(value) || 0 })} />
-        <Field label={language === "zh" ? "单价" : "Unit price"} step="1" type="number" value={String(item.unitPrice)} onChange={(value) => onChange({ unitPrice: Number(value) || 0 })} />
+        <Field label={copy({ en: "Qty", zh: "数量", vi: "Số lượng", ar: "الكمية" })} step="1" type="number" value={String(item.quantity)} onChange={(value) => onChange({ quantity: Number(value) || 0 })} />
+        <Field label={copy({ en: "Unit price", zh: "单价", vi: "Đơn giá", ar: "سعر الوحدة" })} step="1" type="number" value={String(item.unitPrice)} onChange={(value) => onChange({ unitPrice: Number(value) || 0 })} />
         <label>
           <span className="label">GST</span>
           <span className="field flex items-center justify-between gap-3">
-            <span>{item.gstEnabled === false ? "No GST" : "GST"}</span>
+            <span>{item.gstEnabled === false ? copy({ en: "No GST", zh: "无 GST", vi: "Không GST", ar: "بدون GST" }) : "GST"}</span>
             <input
               className="h-4 w-4 accent-[var(--mint-dark)]"
               checked={item.gstEnabled !== false}
@@ -736,9 +781,9 @@ function LineItemEditor({
             />
           </span>
         </label>
-        <DiscountEditor discount={item.discount} label={language === "zh" ? "项目折扣" : "Item discount"} onChange={(discount) => onChange({ discount })} />
+        <DiscountEditor discount={item.discount} label={copy({ en: "Item discount", zh: "项目折扣", vi: "Giảm giá hạng mục", ar: "خصم البند" })} onChange={(discount) => onChange({ discount })} />
         <div>
-          <span className="label">{language === "zh" ? "金额" : "Amount"}</span>
+          <span className="label">{copy({ en: "Amount", zh: "金额", vi: "Thành tiền", ar: "المبلغ" })}</span>
           <div className="rounded-lg border border-[var(--line)] bg-[#f8faf7] px-3 py-3 text-right font-black">
             {formatAud(lineTotal(item))}
           </div>

@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { billingErrorMessage, normalizeBillingStatus, startOfLocalWeek } from "./billing";
+import {
+  billingErrorMessage,
+  freeBillingStatus,
+  freeDocumentsRemaining,
+  isFreeDocumentLimitReached,
+  isCurrentBillingPlan,
+  normalizeBillingStatus,
+  startOfLocalWeek
+} from "./billing";
 
 describe("billing", () => {
   it("starts the PaperMint week on Monday", () => {
@@ -44,5 +52,32 @@ describe("billing", () => {
     expect(billingErrorMessage(new Error("FREE_WEEKLY_DOCUMENT_LIMIT_REACHED"), "zh")).toContain(
       "5 份免费单据"
     );
+    expect(billingErrorMessage(new Error("FREE_WEEKLY_DOCUMENT_LIMIT_REACHED"), "vi")).toContain(
+      "5 chứng từ"
+    );
+    expect(billingErrorMessage(new Error("FREE_WEEKLY_DOCUMENT_LIMIT_REACHED"), "ar")).toContain(
+      "الخمسة"
+    );
+  });
+
+  it("locks free creation after five documents", () => {
+    expect(freeDocumentsRemaining(freeBillingStatus(4))).toBe(1);
+    expect(isFreeDocumentLimitReached(freeBillingStatus(4))).toBe(false);
+    expect(freeDocumentsRemaining(freeBillingStatus(5))).toBe(0);
+    expect(isFreeDocumentLimitReached(freeBillingStatus(5))).toBe(true);
+  });
+
+  it("never applies the free creation lock to an active plan", () => {
+    const billing = normalizeBillingStatus({
+      plan: "weekly",
+      status: "active",
+      documents_used: 99,
+      documents_limit: null
+    });
+    expect(freeDocumentsRemaining(billing)).toBeNull();
+    expect(isFreeDocumentLimitReached(billing)).toBe(false);
+    expect(isCurrentBillingPlan(billing, "free")).toBe(false);
+    expect(isCurrentBillingPlan(billing, "weekly")).toBe(true);
+    expect(isCurrentBillingPlan(billing, "monthly")).toBe(false);
   });
 });

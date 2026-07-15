@@ -4,15 +4,18 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { pdf } from "@react-pdf/renderer";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { AlertCircle, CheckCircle2, Download, FilePlus2, FileText, Loader2, Timer } from "lucide-react";
+import { AlertCircle, CheckCircle2, Download, FilePlus2, FileText, Loader2, LockKeyhole, Timer } from "lucide-react";
 import { AppShell } from "@/components/app/AppShell";
 import { ProtectedRoute } from "@/components/app/ProtectedRoute";
 import { useAuth } from "@/components/app/AuthProvider";
 import { useBilling } from "@/components/app/BillingProvider";
 import { useLanguage } from "@/components/app/LanguageProvider";
+import { useToast } from "@/components/app/ToastProvider";
 import { FiscalReportPdf, type FiscalReportRow } from "@/components/pdf/FiscalReportPdf";
 import { fetchDocuments } from "@/lib/api";
 import { formatAud } from "@/lib/calculations";
+import { billingErrorMessage, isFreeDocumentLimitReached } from "@/lib/billing";
+import { pickLanguage } from "@/lib/i18n";
 import type { DocumentRow } from "@/lib/types";
 
 type ChartPeriod = "week" | "month" | "fiscal";
@@ -99,12 +102,15 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const { billing } = useBilling();
   const { t, language } = useLanguage();
+  const copy = <T,>(values: { en: T; zh?: T; vi?: T; ar?: T }) => pickLanguage(language, values);
+  const { showToast } = useToast();
   const [documents, setDocuments] = useState<DocumentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [period, setPeriod] = useState<ChartPeriod>("month");
   const [companyFilter, setCompanyFilter] = useState("all");
   const [downloadingReport, setDownloadingReport] = useState(false);
+  const limitReached = isFreeDocumentLimitReached(billing);
 
   useEffect(() => {
     if (!user) return;
@@ -159,7 +165,7 @@ export default function DashboardPage() {
     try {
       const fyStart = fiscalYearStart();
       const fyEnd = new Date(fyStart.getFullYear() + 1, 5, 30);
-      const title = language === "zh" ? "财年营收报表" : "Fiscal year revenue report";
+      const title = copy({ en: "Fiscal year revenue report", zh: "财年营收报表", vi: "Báo cáo doanh thu năm tài chính", ar: "تقرير إيرادات السنة المالية" });
       const subtitle = `${fyStart.toISOString().slice(0, 10)} to ${fyEnd.toISOString().slice(0, 10)}`;
       const blob = await pdf(
         <FiscalReportPdf rows={stats.fiscalRows} showBranding={billing.showBranding} subtitle={subtitle} title={title} />
@@ -170,6 +176,9 @@ export default function DashboardPage() {
       anchor.download = `papermint-fiscal-report-${fyStart.getFullYear()}-${fyStart.getFullYear() + 1}.pdf`;
       anchor.click();
       URL.revokeObjectURL(url);
+      showToast(pickLanguage(language, { en: "Financial-year report downloaded.", zh: "财年报表已下载。", vi: "Đã tải báo cáo năm tài chính.", ar: "تم تنزيل تقرير السنة المالية." }));
+    } catch (issue) {
+      showToast(issue instanceof Error ? issue.message : "Unable to download report.", "error");
     } finally {
       setDownloadingReport(false);
     }
@@ -183,20 +192,20 @@ export default function DashboardPage() {
             <div>
               <p className="text-sm font-bold text-white/65">PaperMint</p>
               <h1 className="mt-2 text-3xl font-black tracking-normal">
-                {language === "zh" ? "今天的业务概览" : "Your business at a glance"}
+                {copy({ en: "Your business at a glance", zh: "今天的业务概览", vi: "Tổng quan hoạt động", ar: "نظرة عامة على أعمالك" })}
               </h1>
             </div>
             <div className="flex w-full flex-col gap-3 lg:w-auto lg:items-end">
               <label className="w-full rounded-lg border border-white/15 bg-white/10 p-3 shadow-sm lg:min-w-80">
                 <span className="mb-1 block text-xs font-black uppercase tracking-normal text-white/65">
-                  {language === "zh" ? "公司筛选" : "Company filter"}
+                  {copy({ en: "Company filter", zh: "公司筛选", vi: "Lọc theo công ty", ar: "تصفية حسب الشركة" })}
                 </span>
                 <select
                   className="w-full rounded-md border border-white/20 bg-white px-3 py-2 text-sm font-black text-[var(--foreground)] outline-none"
                   onChange={(event) => setCompanyFilter(event.target.value)}
                   value={companyFilter}
                 >
-                  <option value="all">{language === "zh" ? "全部公司" : "All companies"}</option>
+                  <option value="all">{copy({ en: "All companies", zh: "全部公司", vi: "Tất cả công ty", ar: "جميع الشركات" })}</option>
                   {companyOptions.map((company) => (
                     <option key={company} value={company}>
                       {company}
@@ -205,14 +214,14 @@ export default function DashboardPage() {
                 </select>
               </label>
               <div className="flex flex-wrap gap-2">
-                <Link className="btn-primary bg-white text-[var(--foreground)] hover:bg-[#f1f5f2]" href="/documents/new?type=invoice">
+                {limitReached ? <button className="btn-primary bg-white text-[var(--foreground)]" disabled title={billingErrorMessage(new Error("FREE_WEEKLY_DOCUMENT_LIMIT_REACHED"), language)} type="button"><LockKeyhole className="h-4 w-4" />{t("newInvoice")}</button> : <Link className="btn-primary bg-white text-[var(--foreground)] hover:bg-[#f1f5f2]" href="/documents/new?type=invoice">
                   <FilePlus2 className="h-4 w-4" />
                   {t("newInvoice")}
-                </Link>
-                <Link className="btn-secondary border-white/20 bg-white/10 text-white hover:text-white" href="/documents/new?type=quote">
+                </Link>}
+                {limitReached ? <button className="btn-secondary border-white/20 bg-white/10 text-white" disabled title={billingErrorMessage(new Error("FREE_WEEKLY_DOCUMENT_LIMIT_REACHED"), language)} type="button"><LockKeyhole className="h-4 w-4" />{t("newQuote")}</button> : <Link className="btn-secondary border-white/20 bg-white/10 text-white hover:text-white" href="/documents/new?type=quote">
                   <FileText className="h-4 w-4" />
                   {t("newQuote")}
-                </Link>
+                </Link>}
               </div>
             </div>
           </section>
@@ -226,7 +235,7 @@ export default function DashboardPage() {
           {loading ? (
             <div className="panel flex items-center gap-3 p-5 text-sm font-semibold text-[var(--muted)]">
               <Loader2 className="h-4 w-4 animate-spin" />
-              Loading dashboard
+              {copy({ en: "Loading dashboard", zh: "正在加载看板", vi: "Đang tải tổng quan", ar: "جارٍ تحميل لوحة التحكم" })}
             </div>
           ) : (
             <>
@@ -242,15 +251,15 @@ export default function DashboardPage() {
                   <div>
                     <h2 className="text-xl font-black tracking-normal">{t("revenueTrend")}</h2>
                     <p className="text-sm font-semibold text-[var(--muted)]">
-                      {language === "zh" ? "按已付款发票统计" : "Paid invoices by selected period"}
+                      {copy({ en: "Paid invoices by selected period", zh: "按已付款发票统计", vi: "Hóa đơn đã thanh toán theo kỳ", ar: "الفواتير المدفوعة حسب الفترة" })}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <div className="inline-grid grid-cols-3 rounded-lg border border-[var(--line)] bg-white/70 p-1">
                       {[
-                        { label: language === "zh" ? "周" : "Week", value: "week" },
-                        { label: language === "zh" ? "月" : "Month", value: "month" },
-                        { label: language === "zh" ? "本财年" : "FY", value: "fiscal" }
+                        { label: copy({ en: "Week", zh: "周", vi: "Tuần", ar: "أسبوع" }), value: "week" },
+                        { label: copy({ en: "Month", zh: "月", vi: "Tháng", ar: "شهر" }), value: "month" },
+                        { label: copy({ en: "FY", zh: "本财年", vi: "Năm TC", ar: "السنة المالية" }), value: "fiscal" }
                       ].map((item) => (
                         <button
                           className={`rounded-md px-3 py-2 text-sm font-black ${
@@ -266,7 +275,7 @@ export default function DashboardPage() {
                     </div>
                     <button className="btn-secondary" disabled={downloadingReport} onClick={handleDownloadFiscalReport} type="button">
                       {downloadingReport ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                      {language === "zh" ? "下载财年报表" : "Download FY report"}
+                      {copy({ en: "Download FY report", zh: "下载财年报表", vi: "Tải báo cáo năm tài chính", ar: "تنزيل تقرير السنة المالية" })}
                     </button>
                     <div className="rounded-lg bg-[#edf6f1] px-3 py-2 text-sm font-black text-[var(--mint-dark)]">
                       {stats.quotes} {t("quote")}

@@ -1,14 +1,11 @@
 import { calculateTotals, formatAud, lineGstAmount, lineTotal } from "@/lib/calculations";
-import type { Language } from "@/lib/i18n";
 import type { PaperDocument } from "@/lib/types";
 
 export function DocumentPreview({
   document,
-  language,
   showBranding = false
 }: {
   document: PaperDocument;
-  language: Language;
   showBranding?: boolean;
 }) {
   const totals = calculateTotals(
@@ -17,59 +14,20 @@ export function DocumentPreview({
     document.gstEnabled,
     document.gstRate
   );
-  const labels =
-    language === "zh"
-      ? {
-          invoice: "TAX INVOICE",
-          quote: "QUOTE",
-          issue: "日期",
-          due: "付款期限",
-          valid: "有效期至",
-          from: "From",
-          bill: "Bill To",
-          ship: "Ship To",
-          desc: "描述",
-          qty: "数量",
-          price: "单价",
-          itemDiscount: "折扣",
-          gstColumn: "GST",
-          amount: "金额",
-          subtotal: "小计",
-          discount: "整单折扣",
-          gst: "GST",
-          total: "总计",
-          notes: "备注",
-          payment: "付款方式"
-        }
-      : {
-          invoice: "TAX INVOICE",
-          quote: "QUOTE",
-          issue: "Issue date",
-          due: "Due date",
-          valid: "Valid until",
-          from: "From",
-          bill: "Bill To",
-          ship: "Ship To",
-          desc: "Description",
-          qty: "Qty",
-          price: "Unit",
-          itemDiscount: "Discount",
-          gstColumn: "GST",
-          amount: "Amount",
-          subtotal: "Subtotal",
-          discount: "Order discount",
-          gst: "GST",
-          total: "Total",
-          notes: "Notes",
-          payment: "Payment"
-        };
+  const labels = {
+    invoice: "TAX INVOICE", quote: "QUOTE", issue: "Issue date", due: "Due date",
+    valid: "Valid until", from: "From", bill: "Bill To", ship: "Ship To",
+    desc: "Description", qty: "Qty", price: "Unit price", itemDiscount: "Discount",
+    gstColumn: "GST", amount: "Amount", subtotal: "Subtotal", discount: "Order discount",
+    gst: "GST", total: "Total", notes: "Notes", payment: "Payment"
+  };
   const orderDiscountLabel =
     document.orderDiscount.type === "percent" && document.orderDiscount.value > 0
       ? `${labels.discount} (${document.orderDiscount.value}%)`
       : labels.discount;
 
   return (
-    <div className="print-page mx-auto flex min-h-[1120px] w-full max-w-[794px] flex-col rounded-lg border border-[var(--line)] bg-white p-7 text-[#17211b] shadow-sm sm:p-10">
+    <div className="print-page mx-auto flex min-h-[1120px] w-full max-w-[794px] flex-col rounded-lg border border-[var(--line)] bg-white p-7 text-left text-[#17211b] shadow-sm sm:p-10" dir="ltr" lang="en">
       <div className="flex flex-col justify-between gap-6 border-b border-[#dfe6df] pb-7 sm:flex-row sm:items-start">
         <div>
           <p className="text-sm font-black uppercase tracking-normal text-[var(--mint-dark)]">
@@ -117,9 +75,9 @@ export function DocumentPreview({
             {document.lineItems.map((item) => (
               <tr className="border-b border-[#eef2ef]" key={item.id}>
                 <td className="py-4 pr-2 align-top">
-                  <p className="break-words font-black">{item.description || "Item"}</p>
+                  <p className="break-words font-black" dir="auto">{item.description || "Item"}</p>
                   {item.details ? (
-                    <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-5 text-[#66736b]">
+                    <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-5 text-[#66736b]" dir="auto">
                       {item.details}
                     </p>
                   ) : null}
@@ -145,7 +103,7 @@ export function DocumentPreview({
         </table>
       </div>
 
-      <div className="ml-auto grid max-w-sm gap-2 text-sm">
+      <div className="ml-auto grid w-full max-w-sm gap-2 text-sm">
         <AmountRow label={labels.subtotal} value={formatAud(totals.subtotal)} />
         {totals.orderDiscountTotal > 0 ? (
           <AmountRow label={orderDiscountLabel} value={`-${formatAud(totals.orderDiscountTotal)}`} />
@@ -183,8 +141,8 @@ function PartyBlock({ label, party }: { label: string; party: PaperDocument["com
   return (
     <div className="min-w-0">
       <p className="mb-2 text-xs font-black uppercase tracking-normal text-[#66736b]">{label}</p>
-      <p className="break-words text-base font-black">{party.name || "-"}</p>
-      <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-[#66736b]">
+      <p className="break-words text-base font-black" dir="auto">{party.name || "-"}</p>
+      <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-[#66736b]" dir="auto">
         {[party.address, party.email, party.phone, party.abn ? `ABN ${party.abn}` : ""]
           .filter(Boolean)
           .join("\n")}
@@ -206,7 +164,7 @@ function TextBlock({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <p className="mb-2 text-xs font-black uppercase tracking-normal text-[#66736b]">{label}</p>
-      <p className="whitespace-pre-wrap break-words text-sm leading-6 text-[#66736b]">{value}</p>
+      <p className="whitespace-pre-wrap break-words text-sm leading-6 text-[#66736b]" dir="auto">{value}</p>
     </div>
   );
 }

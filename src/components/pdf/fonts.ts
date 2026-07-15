@@ -17,5 +17,18 @@ export function registerPdfFonts() {
       }
     ]
   });
+  Font.register({
+    family: "PaperMintArabic",
+    fonts: [
+      {
+        src: "/fonts/NotoSansArabic-Regular.ttf",
+        fontWeight: 400
+      },
+      {
+        src: "/fonts/NotoSansArabic-Bold.ttf",
+        fontWeight: 700
+      }
+    ]
+  });
   registered = true;
 }

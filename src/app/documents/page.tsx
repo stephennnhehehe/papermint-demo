@@ -3,16 +3,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { pdf } from "@react-pdf/renderer";
-import { Check, ChevronDown, Copy, Download, FilePlus2, FileText, Loader2, Mail, Repeat2, Trash2, X } from "lucide-react";
+import { Check, ChevronDown, Copy, Download, FilePlus2, FileText, Loader2, LockKeyhole, Mail, Repeat2, Trash2, X } from "lucide-react";
 import { AppShell } from "@/components/app/AppShell";
 import { ProtectedRoute } from "@/components/app/ProtectedRoute";
 import { useAuth } from "@/components/app/AuthProvider";
 import { useBilling } from "@/components/app/BillingProvider";
 import { useLanguage } from "@/components/app/LanguageProvider";
+import { useToast } from "@/components/app/ToastProvider";
 import { PaperMintPdf } from "@/components/pdf/DocumentPdf";
 import { deleteDocument, fetchDocuments, saveDocument } from "@/lib/api";
 import { formatAud } from "@/lib/calculations";
-import { billingErrorMessage } from "@/lib/billing";
+import { billingErrorMessage, isFreeDocumentLimitReached } from "@/lib/billing";
+import { pickLanguage } from "@/lib/i18n";
 import { statusForDueDate } from "@/lib/documents";
 import { addDays, documentFromRow, generateDocumentNumber } from "@/lib/documents";
 import type { DocumentRow, DocumentStatus, DocumentType } from "@/lib/types";
@@ -23,6 +25,8 @@ export default function DocumentsPage() {
   const { user } = useAuth();
   const { billing, refreshBilling } = useBilling();
   const { t, language } = useLanguage();
+  const copy = <T,>(values: { en: T; zh?: T; vi?: T; ar?: T }) => pickLanguage(language, values);
+  const { showToast } = useToast();
   const [documents, setDocuments] = useState<DocumentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | DocumentType>("all");
@@ -30,6 +34,8 @@ export default function DocumentsPage() {
   const [issuerFilter, setIssuerFilter] = useState("all");
   const [message, setMessage] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<DocumentRow | null>(null);
+  const [busyAction, setBusyAction] = useState("");
+  const limitReached = isFreeDocumentLimitReached(billing);
 
   const loadDocuments = useCallback(async () => {
     if (!user) return;
@@ -78,14 +84,28 @@ export default function DocumentsPage() {
 
   async function handleDelete(row: DocumentRow) {
     if (!user) return;
-    await deleteDocument(user.id, row.id);
-    setDeleteTarget(null);
-    setMessage(language === "zh" ? "单据已删除。" : "Document deleted.");
-    await loadDocuments();
+    setBusyAction(`delete:${row.id}`);
+    try {
+      await deleteDocument(user.id, row.id);
+      setDeleteTarget(null);
+      const success = pickLanguage(language, { en: "Document deleted.", zh: "单据已删除。", vi: "Đã xóa chứng từ.", ar: "تم حذف المستند." });
+      setMessage(success);
+      showToast(success);
+      await loadDocuments();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Unable to delete document.", "error");
+    } finally {
+      setBusyAction("");
+    }
   }
 
   async function handleDuplicate(row: DocumentRow) {
     if (!user) return;
+    if (limitReached) {
+      showToast(billingErrorMessage(new Error("FREE_WEEKLY_DOCUMENT_LIMIT_REACHED"), language), "error");
+      return;
+    }
+    setBusyAction(`duplicate:${row.id}`);
     try {
       const source = documentFromRow(row);
       await saveDocument(user.id, {
@@ -97,14 +117,25 @@ export default function DocumentsPage() {
         updatedAt: undefined
       });
       await Promise.all([loadDocuments(), refreshBilling()]);
-      setMessage(language === "zh" ? "已复制为草稿。" : "Copied as draft.");
+      const success = pickLanguage(language, { en: "Copied as a new draft.", zh: "已复制为新草稿。", vi: "Đã sao chép thành bản nháp mới.", ar: "تم النسخ كمسودة جديدة." });
+      setMessage(success);
+      showToast(success);
     } catch (error) {
-      setMessage(billingErrorMessage(error, language));
+      const issue = billingErrorMessage(error, language);
+      setMessage(issue);
+      showToast(issue, "error");
+    } finally {
+      setBusyAction("");
     }
   }
 
   async function handleConvert(row: DocumentRow) {
     if (!user || row.type !== "quote") return;
+    if (limitReached) {
+      showToast(billingErrorMessage(new Error("FREE_WEEKLY_DOCUMENT_LIMIT_REACHED"), language), "error");
+      return;
+    }
+    setBusyAction(`convert:${row.id}`);
     try {
       const source = documentFromRow(row);
       const issueDate = new Date().toISOString().slice(0, 10);
@@ -122,68 +153,88 @@ export default function DocumentsPage() {
         updatedAt: undefined
       });
       await Promise.all([loadDocuments(), refreshBilling()]);
-      setMessage(language === "zh" ? "Quote 已转换为 Invoice 草稿。" : "Quote converted to an invoice draft.");
+      const success = pickLanguage(language, { en: "Quote converted to an invoice draft.", zh: "Quote 已转换为 Invoice 草稿。", vi: "Đã chuyển báo giá thành hóa đơn nháp.", ar: "تم تحويل عرض السعر إلى مسودة فاتورة." });
+      setMessage(success);
+      showToast(success);
     } catch (error) {
-      setMessage(billingErrorMessage(error, language));
+      const issue = billingErrorMessage(error, language);
+      setMessage(issue);
+      showToast(issue, "error");
+    } finally {
+      setBusyAction("");
     }
   }
 
   async function handleStatusChange(row: DocumentRow, status: DocumentStatus) {
     if (!user) return;
-    const source = documentFromRow(row);
-    await saveDocument(user.id, {
-      ...source,
-      status
-    });
-    await loadDocuments();
+    setBusyAction(`status:${row.id}`);
+    try {
+      const source = documentFromRow(row);
+      await saveDocument(user.id, { ...source, status });
+      await loadDocuments();
+      showToast(pickLanguage(language, { en: `Status changed to ${status}.`, zh: `状态已改为 ${status}。`, vi: `Đã đổi trạng thái thành ${status}.`, ar: `تم تغيير الحالة إلى ${status}.` }));
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Unable to update status.", "error");
+    } finally {
+      setBusyAction("");
+    }
   }
 
   async function documentPdfBlob(row: DocumentRow) {
     const source = documentFromRow(row);
-    return pdf(<PaperMintPdf document={source} language={language} showBranding={billing.showBranding} />).toBlob();
+    return pdf(<PaperMintPdf document={source} showBranding={billing.showBranding} />).toBlob();
   }
 
   async function handleDownload(row: DocumentRow) {
-    const blob = await documentPdfBlob(row);
-    const url = URL.createObjectURL(blob);
-    const anchor = window.document.createElement("a");
-    anchor.href = url;
-    anchor.download = `${row.type}-${row.number}.pdf`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+    setBusyAction(`download:${row.id}`);
+    try {
+      const blob = await documentPdfBlob(row);
+      const url = URL.createObjectURL(blob);
+      const anchor = window.document.createElement("a");
+      anchor.href = url;
+      anchor.download = `${row.type}-${row.number}.pdf`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      showToast(pickLanguage(language, { en: "PDF downloaded.", zh: "PDF 已下载。", vi: "Đã tải PDF.", ar: "تم تنزيل ملف PDF." }));
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Unable to download PDF.", "error");
+    } finally {
+      setBusyAction("");
+    }
   }
 
   async function handleSend(row: DocumentRow) {
-    const blob = await documentPdfBlob(row);
-    const file = new File([blob], `${row.type}-${row.number}.pdf`, {
-      type: "application/pdf"
-    });
-    const nav = navigator as Navigator & {
-      canShare?: (data: { files?: File[] }) => boolean;
-      share?: (data: { files?: File[]; title?: string; text?: string }) => Promise<void>;
-    };
-    const title = `${row.type.toUpperCase()} ${row.number}`;
-    const text =
-      language === "zh"
-        ? `您好，请查收 ${title}。`
-        : `Hi, please find ${title}.`;
+    setBusyAction(`send:${row.id}`);
+    try {
+      const blob = await documentPdfBlob(row);
+      const file = new File([blob], `${row.type}-${row.number}.pdf`, {
+        type: "application/pdf"
+      });
+      const nav = navigator as Navigator & {
+        canShare?: (data: { files?: File[] }) => boolean;
+        share?: (data: { files?: File[]; title?: string; text?: string }) => Promise<void>;
+      };
+      const title = `${row.type.toUpperCase()} ${row.number}`;
+      const text = copy({ en: `Hi, please find ${title}.`, zh: `您好，请查收 ${title}。`, vi: `Xin chào, vui lòng xem ${title}.`, ar: `مرحباً، يرجى الاطلاع على ${title}.` });
 
-    if (nav.canShare?.({ files: [file] }) && nav.share) {
-      try {
+      if (nav.canShare?.({ files: [file] }) && nav.share) {
         await nav.share({ files: [file], title, text });
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        throw error;
+        showToast(copy({ en: "Share sheet opened.", zh: "分享面板已打开。", vi: "Đã mở bảng chia sẻ.", ar: "تم فتح لوحة المشاركة." }));
+        return;
       }
-      return;
-    }
 
-    const to = row.bill_to?.email ?? "";
-    const subject = encodeURIComponent(title);
-    const body = encodeURIComponent(
-      `${text}\n\n${language === "zh" ? "如果需要 PDF 附件，请先点击下载按钮后手动附加。" : "If you need a PDF attachment, use the download button and attach the file."}`
-    );
-    window.location.href = `mailto:${to}?subject=${subject}&body=${body}`;
+      const to = row.bill_to?.email ?? "";
+      const subject = encodeURIComponent(title);
+      const attachmentNote = copy({ en: "If you need a PDF attachment, use the download button and attach the file.", zh: "如果需要 PDF 附件，请先点击下载按钮后手动附加。", vi: "Để đính kèm PDF, hãy tải xuống rồi thêm tệp vào email.", ar: "لإرفاق ملف PDF، نزّله أولاً ثم أضفه إلى البريد." });
+      const body = encodeURIComponent(`${text}\n\n${attachmentNote}`);
+      window.location.href = `mailto:${to}?subject=${subject}&body=${body}`;
+      showToast(copy({ en: "Email app opened.", zh: "邮件应用已打开。", vi: "Đã mở ứng dụng email.", ar: "تم فتح تطبيق البريد." }));
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      showToast(error instanceof Error ? error.message : "Unable to share document.", "error");
+    } finally {
+      setBusyAction("");
+    }
   }
 
   return (
@@ -194,18 +245,18 @@ export default function DocumentsPage() {
             <div>
               <h1 className="text-2xl font-black tracking-normal">{t("documents")}</h1>
               <p className="text-sm font-semibold text-[var(--muted)]">
-                {language === "zh" ? "保存、查看、编辑、复制和删除自己的单据。" : "Save, view, edit, copy and delete your own documents."}
+                {copy({ en: "Save, view, edit, copy and delete your own documents.", zh: "保存、查看、编辑、复制和删除自己的单据。", vi: "Lưu, xem, sửa, sao chép và xóa chứng từ của bạn.", ar: "احفظ مستنداتك واعرضها وعدّلها وانسخها واحذفها." })}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Link className="btn-primary" href="/documents/new?type=invoice">
+              {limitReached ? <button className="btn-primary" disabled title={billingErrorMessage(new Error("FREE_WEEKLY_DOCUMENT_LIMIT_REACHED"), language)} type="button"><LockKeyhole className="h-4 w-4" />{t("newInvoice")}</button> : <Link className="btn-primary" href="/documents/new?type=invoice">
                 <FilePlus2 className="h-4 w-4" />
                 {t("newInvoice")}
-              </Link>
-              <Link className="btn-secondary" href="/documents/new?type=quote">
+              </Link>}
+              {limitReached ? <button className="btn-secondary" disabled title={billingErrorMessage(new Error("FREE_WEEKLY_DOCUMENT_LIMIT_REACHED"), language)} type="button"><LockKeyhole className="h-4 w-4" />{t("newQuote")}</button> : <Link className="btn-secondary" href="/documents/new?type=quote">
                 <FileText className="h-4 w-4" />
                 {t("newQuote")}
-              </Link>
+              </Link>}
             </div>
           </div>
 
@@ -221,12 +272,12 @@ export default function DocumentsPage() {
                     onClick={() => setFilter(item)}
                     type="button"
                   >
-                    {item}
+                    {item === "all" ? copy({ en: "All", zh: "全部", vi: "Tất cả", ar: "الكل" }) : item === "invoice" ? t("invoice") : t("quote")}
                   </button>
                 ))}
               </div>
               <select className="field max-w-56" onChange={(event) => setCustomerFilter(event.target.value)} value={customerFilter}>
-                <option value="all">{language === "zh" ? "全部客户" : "All customers"}</option>
+                <option value="all">{copy({ en: "All customers", zh: "全部客户", vi: "Tất cả khách hàng", ar: "جميع العملاء" })}</option>
                 {customerOptions.map((customer) => (
                   <option key={customer} value={customer}>
                     {customer}
@@ -234,7 +285,7 @@ export default function DocumentsPage() {
                 ))}
               </select>
               <select className="field max-w-56" onChange={(event) => setIssuerFilter(event.target.value)} value={issuerFilter}>
-                <option value="all">{language === "zh" ? "全部开票方" : "All issuers"}</option>
+                <option value="all">{copy({ en: "All issuers", zh: "全部开票方", vi: "Tất cả bên phát hành", ar: "جميع جهات الإصدار" })}</option>
                 {issuerOptions.map((issuer) => (
                   <option key={issuer} value={issuer}>
                     {issuer}
@@ -248,24 +299,24 @@ export default function DocumentsPage() {
           {loading ? (
             <div className="flex items-center gap-3 text-sm font-semibold text-[var(--muted)]">
               <Loader2 className="h-4 w-4 animate-spin" />
-              Loading documents
+              {copy({ en: "Loading documents", zh: "正在加载单据", vi: "Đang tải chứng từ", ar: "جارٍ تحميل المستندات" })}
             </div>
           ) : visibleDocuments.length === 0 ? (
             <div className="rounded-lg border border-dashed border-[var(--line)] p-8 text-center text-sm font-semibold text-[var(--muted)]">
-              {language === "zh" ? "暂无单据。" : "No documents yet."}
+              {copy({ en: "No documents yet.", zh: "暂无单据。", vi: "Chưa có chứng từ.", ar: "لا توجد مستندات بعد." })}
             </div>
           ) : (
             <div className="overflow-x-auto pb-20">
               <table className="w-full min-w-[860px] border-collapse text-left text-sm">
                 <thead>
                   <tr className="border-b border-[var(--line)] text-xs uppercase text-[var(--muted)]">
-                    <th className="py-3 pr-3">Number</th>
-                    <th className="px-3">Customer</th>
-                    <th className="px-3">Type</th>
-                    <th className="px-3">Status</th>
-                    <th className="px-3 text-right">Total</th>
-                    <th className="px-3">Updated</th>
-                    <th className="py-3 pl-3 text-right">Actions</th>
+                    <th className="py-3 pr-3">{copy({ en: "Number", zh: "编号", vi: "Số", ar: "الرقم" })}</th>
+                    <th className="px-3">{copy({ en: "Customer", zh: "客户", vi: "Khách hàng", ar: "العميل" })}</th>
+                    <th className="px-3">{copy({ en: "Type", zh: "类型", vi: "Loại", ar: "النوع" })}</th>
+                    <th className="px-3">{t("status")}</th>
+                    <th className="px-3 text-right">{t("total")}</th>
+                    <th className="px-3">{copy({ en: "Updated", zh: "更新时间", vi: "Cập nhật", ar: "آخر تحديث" })}</th>
+                    <th className="py-3 pl-3 text-right">{copy({ en: "Actions", zh: "操作", vi: "Thao tác", ar: "الإجراءات" })}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -290,18 +341,18 @@ export default function DocumentsPage() {
                       <td className="px-3 text-[var(--muted)]">{new Date(row.updated_at).toLocaleDateString()}</td>
                       <td className="py-3 pl-3">
                         <div className="flex justify-end gap-2">
-                          <button className="icon-btn" onClick={() => handleDuplicate(row)} title={t("duplicate")} type="button">
-                            <Copy className="h-4 w-4" />
+                          <button className="icon-btn" disabled={limitReached || busyAction === `duplicate:${row.id}`} onClick={() => handleDuplicate(row)} title={limitReached ? billingErrorMessage(new Error("FREE_WEEKLY_DOCUMENT_LIMIT_REACHED"), language) : t("duplicate")} type="button">
+                            {busyAction === `duplicate:${row.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}
                           </button>
-                          <button className="icon-btn" onClick={() => handleDownload(row)} title={t("downloadPdf")} type="button">
-                            <Download className="h-4 w-4" />
+                          <button className="icon-btn" disabled={busyAction === `download:${row.id}`} onClick={() => handleDownload(row)} title={t("downloadPdf")} type="button">
+                            {busyAction === `download:${row.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                           </button>
-                          <button className="icon-btn" onClick={() => handleSend(row)} title={language === "zh" ? "发送邮件" : "Send email"} type="button">
-                            <Mail className="h-4 w-4" />
+                          <button className="icon-btn" disabled={busyAction === `send:${row.id}`} onClick={() => handleSend(row)} title={copy({ en: "Send email", zh: "发送邮件", vi: "Gửi email", ar: "إرسال بريد" })} type="button">
+                            {busyAction === `send:${row.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
                           </button>
                           {row.type === "quote" ? (
-                            <button className="icon-btn" onClick={() => handleConvert(row)} title={t("convertToInvoice")} type="button">
-                              <Repeat2 className="h-4 w-4" />
+                            <button className="icon-btn" disabled={limitReached || busyAction === `convert:${row.id}`} onClick={() => handleConvert(row)} title={limitReached ? billingErrorMessage(new Error("FREE_WEEKLY_DOCUMENT_LIMIT_REACHED"), language) : t("convertToInvoice")} type="button">
+                              {busyAction === `convert:${row.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Repeat2 className="h-4 w-4" />}
                             </button>
                           ) : null}
                           <button className="icon-btn text-[var(--rose)]" onClick={() => setDeleteTarget(row)} title={t("delete")} type="button">
@@ -331,12 +382,10 @@ export default function DocumentsPage() {
               <div className="mb-4 flex items-start justify-between gap-4">
                 <div>
                   <h2 className="text-xl font-black tracking-normal">
-                    {language === "zh" ? "删除单据？" : "Delete document?"}
+                    {copy({ en: "Delete document?", zh: "删除单据？", vi: "Xóa chứng từ?", ar: "حذف المستند؟" })}
                   </h2>
                   <p className="mt-1 text-sm font-semibold text-[var(--muted)]">
-                    {language === "zh"
-                      ? `确认删除 ${deleteTarget.number}？此操作无法撤销。`
-                      : `Delete ${deleteTarget.number}? This cannot be undone.`}
+                    {copy({ en: `Delete ${deleteTarget.number}? This cannot be undone.`, zh: `确认删除 ${deleteTarget.number}？此操作无法撤销。`, vi: `Xóa ${deleteTarget.number}? Không thể hoàn tác.`, ar: `حذف ${deleteTarget.number}؟ لا يمكن التراجع عن هذا الإجراء.` })}
                   </p>
                 </div>
                 <button className="icon-btn" onClick={() => setDeleteTarget(null)} type="button">
@@ -351,11 +400,11 @@ export default function DocumentsPage() {
               </div>
               <div className="mt-5 flex justify-end gap-2">
                 <button className="btn-secondary" onClick={() => setDeleteTarget(null)} type="button">
-                  {language === "zh" ? "取消" : "Cancel"}
+                  {copy({ en: "Cancel", zh: "取消", vi: "Hủy", ar: "إلغاء" })}
                 </button>
-                <button className="btn-primary bg-[var(--rose)] hover:bg-[#a6293b]" onClick={() => handleDelete(deleteTarget)} type="button">
-                  <Trash2 className="h-4 w-4" />
-                  {language === "zh" ? "删除" : "Delete"}
+                <button className="btn-primary bg-[var(--rose)] hover:bg-[#a6293b]" disabled={busyAction === `delete:${deleteTarget.id}`} onClick={() => handleDelete(deleteTarget)} type="button">
+                  {busyAction === `delete:${deleteTarget.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  {t("delete")}
                 </button>
               </div>
             </div>
@@ -373,6 +422,7 @@ function StatusSelect({
   value: DocumentStatus;
   onChange: (status: DocumentStatus) => void;
 }) {
+  const { language } = useLanguage();
   const [open, setOpen] = useState(false);
   const classes: Record<DocumentStatus, { button: string; dot: string }> = {
     draft: { button: "bg-slate-50 text-slate-700 ring-slate-200", dot: "bg-slate-400" },
@@ -399,7 +449,7 @@ function StatusSelect({
       >
         <span className="inline-flex items-center gap-2">
           <span className={`h-2 w-2 rounded-full ${classes[value].dot}`} />
-          {value}
+          {statusLabel(value, language)}
         </span>
         <ChevronDown className={`h-3.5 w-3.5 transition ${open ? "rotate-180" : ""}`} />
       </button>
@@ -417,7 +467,7 @@ function StatusSelect({
             >
               <span className="inline-flex items-center gap-2">
                 <span className={`h-2 w-2 rounded-full ${classes[status].dot}`} />
-                {status}
+              {statusLabel(status, language)}
               </span>
               {status === value ? <Check className="h-3.5 w-3.5" /> : null}
             </button>
@@ -426,4 +476,15 @@ function StatusSelect({
       ) : null}
     </div>
   );
+}
+
+function statusLabel(status: DocumentStatus, language: ReturnType<typeof useLanguage>["language"]) {
+  const labels: Record<DocumentStatus, { en: string; zh: string; vi: string; ar: string }> = {
+    draft: { en: "Draft", zh: "草稿", vi: "Bản nháp", ar: "مسودة" },
+    sent: { en: "Sent", zh: "已发送", vi: "Đã gửi", ar: "مرسل" },
+    paid: { en: "Paid", zh: "已付款", vi: "Đã thanh toán", ar: "مدفوع" },
+    overdue: { en: "Overdue", zh: "逾期", vi: "Quá hạn", ar: "متأخر" },
+    cancelled: { en: "Cancelled", zh: "已取消", vi: "Đã hủy", ar: "ملغى" }
+  };
+  return labels[status][language];
 }

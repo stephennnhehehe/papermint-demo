@@ -86,6 +86,61 @@ textarea:focus-visible {
   }
 }
 
+@keyframes pm-demo-scene {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pm-demo-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.55);
+  }
+  70% {
+    opacity: 1;
+    transform: scale(1.14);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pm-demo-row {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pm-demo-preview {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pm-demo-progress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
 .pm-demo-enter {
   animation: pm-demo-enter 320ms ease-out both;
 }
@@ -93,6 +148,31 @@ textarea:focus-visible {
 .pm-demo-bar {
   animation: pm-demo-bar 520ms ease-out both;
   transform-origin: bottom;
+}
+
+.pm-demo-scene {
+  animation: pm-demo-scene 280ms ease-out both;
+}
+
+.pm-demo-pop {
+  animation: pm-demo-pop 420ms ease-out both;
+}
+
+.pm-demo-row {
+  animation: pm-demo-row 360ms ease-out both;
+}
+
+.pm-demo-preview {
+  animation: pm-demo-preview 220ms ease-out both;
+}
+
+.pm-demo-preview > div {
+  animation: pm-demo-scene 320ms ease-out both;
+}
+
+.pm-demo-progress {
+  animation: pm-demo-progress 3.2s linear both;
+  transform-origin: left;
 }
 
 .field {

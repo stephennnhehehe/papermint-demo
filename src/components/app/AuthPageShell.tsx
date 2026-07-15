@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Brand } from "./Brand";
 import { LanguageSwitch } from "./LanguageSwitch";
+import { pickLanguage, type Language } from "@/lib/i18n";
 
 export function AuthPageShell({
   children,
@@ -11,7 +12,7 @@ export function AuthPageShell({
   children: React.ReactNode;
   title: string;
   subtitle: string;
-  language: "en" | "zh";
+  language: Language;
 }) {
   return (
     <main className="min-h-screen bg-[#f5f7f4] px-4 py-5 sm:px-6">
@@ -26,7 +27,7 @@ export function AuthPageShell({
           <div className="mt-6">{children}</div>
           <div className="mt-6 border-t border-[var(--line)] pt-5 text-center text-xs text-[var(--muted)]">
             <Link className="font-bold hover:text-[var(--mint-dark)]" href="/login">
-              {language === "zh" ? "返回登录" : "Back to sign in"}
+              {pickLanguage(language, { en: "Back to sign in", zh: "返回登录", vi: "Quay lại đăng nhập", ar: "العودة إلى تسجيل الدخول" })}
             </Link>
           </div>
         </section>

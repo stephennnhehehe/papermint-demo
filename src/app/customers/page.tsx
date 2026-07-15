@@ -6,7 +6,9 @@ import { AppShell } from "@/components/app/AppShell";
 import { ProtectedRoute } from "@/components/app/ProtectedRoute";
 import { useAuth } from "@/components/app/AuthProvider";
 import { useLanguage } from "@/components/app/LanguageProvider";
+import { useToast } from "@/components/app/ToastProvider";
 import { deleteCustomer, fetchCustomers, upsertCustomer } from "@/lib/api";
+import { pickLanguage } from "@/lib/i18n";
 import type { Customer } from "@/lib/types";
 
 type CustomerForm = {
@@ -46,6 +48,8 @@ function toForm(customer: Customer): CustomerForm {
 export default function CustomersPage() {
   const { user } = useAuth();
   const { t, language } = useLanguage();
+  const { showToast } = useToast();
+  const copy = <T,>(values: { en: T; zh?: T; vi?: T; ar?: T }) => pickLanguage(language, values);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [form, setForm] = useState<CustomerForm>(emptyForm);
   const [loading, setLoading] = useState(true);
@@ -77,9 +81,13 @@ export default function CustomersPage() {
       await upsertCustomer(user.id, form);
       setForm(emptyForm);
       await loadCustomers();
-      setMessage(language === "zh" ? "客户已保存。" : "Customer saved.");
+      const success = copy({ en: "Customer saved.", zh: "客户已保存。", vi: "Đã lưu khách hàng.", ar: "تم حفظ العميل." });
+      setMessage(success);
+      showToast(success);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to save customer.");
+      const issue = error instanceof Error ? error.message : "Unable to save customer.";
+      setMessage(issue);
+      showToast(issue, "error");
     } finally {
       setSaving(false);
     }
@@ -88,11 +96,16 @@ export default function CustomersPage() {
   async function handleDelete(customer: Customer) {
     if (!user) return;
     const ok = window.confirm(
-      language === "zh" ? `删除客户 ${customer.name}？` : `Delete ${customer.name}?`
+      copy({ en: `Delete ${customer.name}?`, zh: `删除客户 ${customer.name}？`, vi: `Xóa khách hàng ${customer.name}?`, ar: `حذف العميل ${customer.name}؟` })
     );
     if (!ok) return;
-    await deleteCustomer(user.id, customer.id);
-    await loadCustomers();
+    try {
+      await deleteCustomer(user.id, customer.id);
+      await loadCustomers();
+      showToast(copy({ en: "Customer deleted.", zh: "客户已删除。", vi: "Đã xóa khách hàng.", ar: "تم حذف العميل." }));
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Unable to delete customer.", "error");
+    }
   }
 
   return (
@@ -107,16 +120,16 @@ export default function CustomersPage() {
               <div>
                 <h1 className="text-2xl font-black tracking-normal">{t("customers")}</h1>
                 <p className="text-sm font-semibold text-[var(--muted)]">
-                  {language === "zh" ? "保存常用客户，创建单据时快速选择。" : "Save reusable bill-to and ship-to details."}
+                  {copy({ en: "Save reusable bill-to and ship-to details.", zh: "保存常用客户，创建单据时快速选择。", vi: "Lưu thông tin khách hàng để chọn nhanh khi lập chứng từ.", ar: "احفظ بيانات العملاء لاختيارها سريعاً عند إنشاء المستندات." })}
                 </p>
               </div>
             </div>
 
             <form className="grid gap-3" onSubmit={handleSubmit}>
-              <Field label={language === "zh" ? "客户名称" : "Customer name"} required value={form.name} onChange={(value) => setForm({ ...form, name: value })} />
+              <Field label={copy({ en: "Customer name", zh: "客户名称", vi: "Tên khách hàng", ar: "اسم العميل" })} required value={form.name} onChange={(value) => setForm({ ...form, name: value })} />
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label={t("email")} type="email" value={form.email} onChange={(value) => setForm({ ...form, email: value })} />
-                <Field label={language === "zh" ? "电话" : "Phone"} value={form.phone} onChange={(value) => setForm({ ...form, phone: value })} />
+                <Field label={copy({ en: "Phone", zh: "电话", vi: "Điện thoại", ar: "الهاتف" })} value={form.phone} onChange={(value) => setForm({ ...form, phone: value })} />
               </div>
               <Field label="ABN" value={form.abn} onChange={(value) => setForm({ ...form, abn: value })} />
               <TextArea label="Bill To" value={form.billing_address} onChange={(value) => setForm({ ...form, billing_address: value })} />
@@ -129,7 +142,7 @@ export default function CustomersPage() {
                 </button>
                 {form.id && (
                   <button className="btn-secondary" onClick={() => setForm(emptyForm)} type="button">
-                    {language === "zh" ? "取消" : "Cancel"}
+                    {copy({ en: "Cancel", zh: "取消", vi: "Hủy", ar: "إلغاء" })}
                   </button>
                 )}
               </div>
@@ -145,7 +158,7 @@ export default function CustomersPage() {
           <section className="panel p-5">
             <div className="mb-4 flex items-center justify-between gap-3">
               <h2 className="text-xl font-black tracking-normal">
-                {language === "zh" ? "客户列表" : "Customer list"}
+                {copy({ en: "Customer list", zh: "客户列表", vi: "Danh sách khách hàng", ar: "قائمة العملاء" })}
               </h2>
               <span className="rounded-lg bg-[#eef3ef] px-3 py-2 text-sm font-black text-[var(--muted)]">
                 {customers.length}
@@ -155,11 +168,11 @@ export default function CustomersPage() {
             {loading ? (
               <div className="flex items-center gap-3 text-sm font-semibold text-[var(--muted)]">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Loading customers
+                {copy({ en: "Loading customers", zh: "正在加载客户", vi: "Đang tải khách hàng", ar: "جارٍ تحميل العملاء" })}
               </div>
             ) : customers.length === 0 ? (
               <div className="rounded-lg border border-dashed border-[var(--line)] p-8 text-center text-sm font-semibold text-[var(--muted)]">
-                {language === "zh" ? "还没有客户。" : "No customers yet."}
+                {copy({ en: "No customers yet.", zh: "还没有客户。", vi: "Chưa có khách hàng.", ar: "لا يوجد عملاء بعد." })}
               </div>
             ) : (
               <div className="grid gap-3">

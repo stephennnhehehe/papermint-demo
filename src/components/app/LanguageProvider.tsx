@@ -23,8 +23,15 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const saved = window.localStorage.getItem("papermint:language");
-    if (saved === "en" || saved === "zh") setLanguageState(saved);
+    if (saved === "en" || saved === "zh" || saved === "vi" || saved === "ar") {
+      setLanguageState(saved);
+    }
   }, []);
+
+  useEffect(() => {
+    document.documentElement.lang = language;
+    document.documentElement.dir = language === "ar" ? "rtl" : "ltr";
+  }, [language]);
 
   const setLanguage = useCallback((nextLanguage: Language) => {
     setLanguageState(nextLanguage);

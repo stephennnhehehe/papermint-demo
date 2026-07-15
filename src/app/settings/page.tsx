@@ -6,6 +6,7 @@ import { AppShell } from "@/components/app/AppShell";
 import { ProtectedRoute } from "@/components/app/ProtectedRoute";
 import { useAuth } from "@/components/app/AuthProvider";
 import { useLanguage } from "@/components/app/LanguageProvider";
+import { useToast } from "@/components/app/ToastProvider";
 import {
   deleteCompanyProfile,
   fetchCompanyProfiles,
@@ -15,6 +16,7 @@ import {
 } from "@/lib/api";
 import { defaultCompanyProfile } from "@/lib/documents";
 import { uploadLogo } from "@/lib/storage";
+import { pickLanguage } from "@/lib/i18n";
 import type { CompanyProfile, CompanyRecord } from "@/lib/types";
 
 type CompanyForm = {
@@ -54,6 +56,8 @@ function toCompanyForm(company: CompanyRecord): CompanyForm {
 export default function SettingsPage() {
   const { user } = useAuth();
   const { t, language } = useLanguage();
+  const { showToast } = useToast();
+  const copy = <T,>(values: { en: T; zh?: T; vi?: T; ar?: T }) => pickLanguage(language, values);
   const [profile, setProfile] = useState<CompanyProfile>(defaultCompanyProfile);
   const [companies, setCompanies] = useState<CompanyRecord[]>([]);
   const [companyForm, setCompanyForm] = useState<CompanyForm>(emptyCompanyForm);
@@ -121,9 +125,13 @@ export default function SettingsPage() {
           }))
         ]);
       }
-      setMessage(language === "zh" ? "默认公司资料已保存。" : "Company defaults saved.");
+      const success = copy({ en: "Company defaults saved.", zh: "默认公司资料已保存。", vi: "Đã lưu thông tin công ty mặc định.", ar: "تم حفظ بيانات الشركة الافتراضية." });
+      setMessage(success);
+      showToast(success);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to save settings.");
+      const issue = error instanceof Error ? error.message : "Unable to save settings.";
+      setMessage(issue);
+      showToast(issue, "error");
     } finally {
       setSaving(false);
     }
@@ -143,9 +151,13 @@ export default function SettingsPage() {
         )
       ]);
       setCompanyForm(emptyCompanyForm);
-      setMessage(language === "zh" ? "开票方资料已保存。" : "Issuer profile saved.");
+      const success = copy({ en: "Issuer profile saved.", zh: "开票方资料已保存。", vi: "Đã lưu hồ sơ bên phát hành.", ar: "تم حفظ ملف جهة الإصدار." });
+      setMessage(success);
+      showToast(success);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to save issuer profile.");
+      const issue = error instanceof Error ? error.message : "Unable to save issuer profile.";
+      setMessage(issue);
+      showToast(issue, "error");
     } finally {
       setSaving(false);
     }
@@ -154,11 +166,16 @@ export default function SettingsPage() {
   async function handleCompanyDelete(company: CompanyRecord) {
     if (!user) return;
     const ok = window.confirm(
-      language === "zh" ? `删除开票方 ${company.business_name}？` : `Delete ${company.business_name}?`
+      copy({ en: `Delete ${company.business_name}?`, zh: `删除开票方 ${company.business_name}？`, vi: `Xóa bên phát hành ${company.business_name}?`, ar: `حذف جهة الإصدار ${company.business_name}؟` })
     );
     if (!ok) return;
-    await deleteCompanyProfile(user.id, company.id);
-    setCompanies((current) => current.filter((item) => item.id !== company.id));
+    try {
+      await deleteCompanyProfile(user.id, company.id);
+      setCompanies((current) => current.filter((item) => item.id !== company.id));
+      showToast(copy({ en: "Issuer profile deleted.", zh: "开票方资料已删除。", vi: "Đã xóa hồ sơ bên phát hành.", ar: "تم حذف ملف جهة الإصدار." }));
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Unable to delete issuer profile.", "error");
+    }
   }
 
   async function handleLogo(file: File | undefined) {
@@ -168,9 +185,13 @@ export default function SettingsPage() {
     try {
       const url = await uploadLogo(file, user.id);
       setProfile((current) => ({ ...current, logo_url: url }));
-      setMessage(language === "zh" ? "Logo 已上传，记得保存设置。" : "Logo uploaded. Save settings to keep it as default.");
+      const success = copy({ en: "Logo uploaded. Save settings to keep it as default.", zh: "Logo 已上传，记得保存设置。", vi: "Đã tải logo lên. Hãy lưu để đặt làm mặc định.", ar: "تم رفع الشعار. احفظ الإعدادات لاستخدامه افتراضياً." });
+      setMessage(success);
+      showToast(success);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to upload logo.");
+      const issue = error instanceof Error ? error.message : "Unable to upload logo.";
+      setMessage(issue);
+      showToast(issue, "error");
     } finally {
       setSaving(false);
     }
@@ -188,7 +209,7 @@ export default function SettingsPage() {
             <div>
               <h1 className="text-2xl font-black tracking-normal">{t("companyDefaults")}</h1>
               <p className="text-sm font-semibold text-[var(--muted)]">
-                {language === "zh" ? "新建单据时自动填入这些资料。" : "These details prefill every new document."}
+                {copy({ en: "These details prefill every new document.", zh: "新建单据时自动填入这些资料。", vi: "Thông tin này được điền sẵn cho mỗi chứng từ mới.", ar: "تُملأ هذه البيانات تلقائياً في كل مستند جديد." })}
               </p>
             </div>
           </div>
@@ -196,17 +217,17 @@ export default function SettingsPage() {
           {loading ? (
             <div className="flex items-center gap-3 text-sm font-semibold text-[var(--muted)]">
               <Loader2 className="h-4 w-4 animate-spin" />
-              Loading settings
+              {copy({ en: "Loading settings", zh: "正在加载设置", vi: "Đang tải cài đặt", ar: "جارٍ تحميل الإعدادات" })}
             </div>
           ) : (
             <form className="grid gap-4" onSubmit={handleSubmit}>
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label={language === "zh" ? "公司名称" : "Business name"} value={profile.business_name} onChange={(value) => setProfile({ ...profile, business_name: value })} />
+                <Field label={copy({ en: "Business name", zh: "公司名称", vi: "Tên doanh nghiệp", ar: "اسم الشركة" })} value={profile.business_name} onChange={(value) => setProfile({ ...profile, business_name: value })} />
                 <Field label="ABN" value={profile.abn} onChange={(value) => setProfile({ ...profile, abn: value })} />
                 <Field label={t("email")} type="email" value={profile.email} onChange={(value) => setProfile({ ...profile, email: value })} />
-                <Field label={language === "zh" ? "电话" : "Phone"} value={profile.phone} onChange={(value) => setProfile({ ...profile, phone: value })} />
+                <Field label={copy({ en: "Phone", zh: "电话", vi: "Điện thoại", ar: "الهاتف" })} value={profile.phone} onChange={(value) => setProfile({ ...profile, phone: value })} />
               </div>
-              <TextArea label={language === "zh" ? "地址" : "Address"} value={profile.address} onChange={(value) => setProfile({ ...profile, address: value })} />
+              <TextArea label={copy({ en: "Address", zh: "地址", vi: "Địa chỉ", ar: "العنوان" })} value={profile.address} onChange={(value) => setProfile({ ...profile, address: value })} />
               <TextArea label={t("paymentMethods")} value={profile.default_payment_methods} onChange={(value) => setProfile({ ...profile, default_payment_methods: value })} />
               <TextArea label={t("notes")} value={profile.default_notes} onChange={(value) => setProfile({ ...profile, default_notes: value })} />
 
@@ -223,7 +244,7 @@ export default function SettingsPage() {
                   )}
                   <label className="btn-secondary cursor-pointer">
                     <Upload className="h-4 w-4" />
-                    {language === "zh" ? "上传 Logo" : "Upload logo"}
+                    {copy({ en: "Upload logo", zh: "上传 Logo", vi: "Tải logo lên", ar: "رفع الشعار" })}
                     <input
                       accept="image/png,image/jpeg,image/webp"
                       className="hidden"
@@ -252,10 +273,10 @@ export default function SettingsPage() {
           <div className="mb-6 flex items-center justify-between gap-3">
             <div>
               <h2 className="text-2xl font-black tracking-normal">
-                {language === "zh" ? "开票方资料" : "Issuer profiles"}
+                {copy({ en: "Issuer profiles", zh: "开票方资料", vi: "Hồ sơ bên phát hành", ar: "ملفات جهات الإصدار" })}
               </h2>
               <p className="text-sm font-semibold text-[var(--muted)]">
-                {language === "zh" ? "像客户一样保存多个开票方，在创建发票时选择。" : "Save multiple From profiles and choose one in the document editor."}
+                {copy({ en: "Save multiple From profiles and choose one in the document editor.", zh: "像客户一样保存多个开票方，在创建发票时选择。", vi: "Lưu nhiều bên phát hành và chọn khi lập chứng từ.", ar: "احفظ عدة جهات إصدار واختر منها عند إنشاء المستند." })}
               </p>
             </div>
             <span className="rounded-lg bg-[#eef3ef] px-3 py-2 text-sm font-black text-[var(--muted)]">
@@ -265,24 +286,24 @@ export default function SettingsPage() {
 
           <form className="grid gap-3" onSubmit={handleCompanySubmit}>
             <div className="grid gap-3 sm:grid-cols-2">
-              <Field label={language === "zh" ? "公司名称" : "Business name"} value={companyForm.business_name} onChange={(value) => setCompanyForm({ ...companyForm, business_name: value })} />
+              <Field label={copy({ en: "Business name", zh: "公司名称", vi: "Tên doanh nghiệp", ar: "اسم الشركة" })} value={companyForm.business_name} onChange={(value) => setCompanyForm({ ...companyForm, business_name: value })} />
               <Field label="ABN" value={companyForm.abn} onChange={(value) => setCompanyForm({ ...companyForm, abn: value })} />
               <Field label={t("email")} type="email" value={companyForm.email} onChange={(value) => setCompanyForm({ ...companyForm, email: value })} />
-              <Field label={language === "zh" ? "电话" : "Phone"} value={companyForm.phone} onChange={(value) => setCompanyForm({ ...companyForm, phone: value })} />
+              <Field label={copy({ en: "Phone", zh: "电话", vi: "Điện thoại", ar: "الهاتف" })} value={companyForm.phone} onChange={(value) => setCompanyForm({ ...companyForm, phone: value })} />
             </div>
-            <TextArea label={language === "zh" ? "地址" : "Address"} value={companyForm.address} onChange={(value) => setCompanyForm({ ...companyForm, address: value })} />
+            <TextArea label={copy({ en: "Address", zh: "地址", vi: "Địa chỉ", ar: "العنوان" })} value={companyForm.address} onChange={(value) => setCompanyForm({ ...companyForm, address: value })} />
             <label className="flex items-center justify-between gap-3 rounded-lg border border-[var(--line)] bg-white/70 p-3 text-sm font-bold">
-              <span>{language === "zh" ? "设为默认开票方" : "Default issuer"}</span>
+              <span>{copy({ en: "Default issuer", zh: "设为默认开票方", vi: "Bên phát hành mặc định", ar: "جهة الإصدار الافتراضية" })}</span>
               <input checked={companyForm.is_default} onChange={(event) => setCompanyForm({ ...companyForm, is_default: event.target.checked })} type="checkbox" />
             </label>
             <div className="flex gap-2">
               <button className="btn-primary flex-1" disabled={saving || !companyForm.business_name} type="submit">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                {companyForm.id ? t("save") : language === "zh" ? "添加开票方" : "Add issuer"}
+                {companyForm.id ? t("save") : copy({ en: "Add issuer", zh: "添加开票方", vi: "Thêm bên phát hành", ar: "إضافة جهة إصدار" })}
               </button>
               {companyForm.id ? (
                 <button className="btn-secondary" onClick={() => setCompanyForm(emptyCompanyForm)} type="button">
-                  {language === "zh" ? "取消" : "Cancel"}
+                  {copy({ en: "Cancel", zh: "取消", vi: "Hủy", ar: "إلغاء" })}
                 </button>
               ) : null}
             </div>
@@ -291,7 +312,7 @@ export default function SettingsPage() {
           <div className="mt-5 grid gap-3">
             {companies.length === 0 ? (
               <div className="rounded-lg border border-dashed border-[var(--line)] p-6 text-center text-sm font-semibold text-[var(--muted)]">
-                {language === "zh" ? "还没有保存开票方。" : "No issuer profiles saved yet."}
+                {copy({ en: "No issuer profiles saved yet.", zh: "还没有保存开票方。", vi: "Chưa có hồ sơ bên phát hành.", ar: "لا توجد ملفات جهات إصدار محفوظة بعد." })}
               </div>
             ) : (
               companies.map((company) => (
