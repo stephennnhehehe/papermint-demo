@@ -8,11 +8,11 @@ export function registerPdfFonts() {
     family: "PaperMintSans",
     fonts: [
       {
-        src: "/fonts/NotoSansCJKsc-Regular.otf",
+        src: "/fonts/NotoSansSC-Regular.ttf",
         fontWeight: 400
       },
       {
-        src: "/fonts/NotoSansCJKsc-Bold.otf",
+        src: "/fonts/NotoSansSC-Bold.ttf",
         fontWeight: 700
       }
     ]

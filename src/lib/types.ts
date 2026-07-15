@@ -9,6 +9,19 @@ export type DocumentStatus =
 
 export type DiscountType = "percent" | "fixed";
 
+export type BillingPlan = "free" | "weekly" | "monthly";
+
+export type BillingStatus = {
+  plan: BillingPlan;
+  status: string;
+  currentPeriodEnd: string | null;
+  documentsUsed: number;
+  documentsLimit: number | null;
+  weekStartsAt: string;
+  isPaid: boolean;
+  showBranding: boolean;
+};
+
 export type Discount = {
   type: DiscountType;
   value: number;

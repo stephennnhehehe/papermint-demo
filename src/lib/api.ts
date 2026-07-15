@@ -1,9 +1,11 @@
 import { calculateTotals } from "./calculations";
+import { normalizeBillingStatus } from "./billing";
 import { documentFromRow } from "./documents";
 import {
   localDeleteCompanyProfile,
   localDeleteCustomer,
   localDeleteDocument,
+  localFetchBillingStatus,
   localFetchCompanyProfiles,
   localFetchCustomers,
   localFetchDocument,
@@ -17,6 +19,7 @@ import {
 import { getSupabaseClient } from "./supabase";
 import { isSupabaseConfigured } from "./supabase";
 import type {
+  BillingStatus,
   CompanyRecord,
   CompanyProfile,
   Customer,
@@ -27,6 +30,15 @@ import type {
 
 function shouldUseLocalStore(userId: string) {
   return userId === "demo-user" || !isSupabaseConfigured();
+}
+
+export async function fetchBillingStatus(userId: string): Promise<BillingStatus> {
+  if (shouldUseLocalStore(userId)) return localFetchBillingStatus(userId);
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase.rpc("get_billing_status");
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  return normalizeBillingStatus(row ?? {});
 }
 
 export async function fetchProfile(userId: string): Promise<ProfileRow | null> {

@@ -1,14 +1,17 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Copy, Download, Eye, EyeOff, Loader2, Plus, Printer, Save, Trash2, Upload } from "lucide-react";
 import { pdf } from "@react-pdf/renderer";
 import { AppShell } from "@/components/app/AppShell";
 import { ProtectedRoute } from "@/components/app/ProtectedRoute";
 import { useAuth } from "@/components/app/AuthProvider";
+import { useBilling } from "@/components/app/BillingProvider";
 import { useLanguage } from "@/components/app/LanguageProvider";
 import { calculateTotals, formatAud, lineTotal } from "@/lib/calculations";
+import { billingErrorMessage } from "@/lib/billing";
 import {
   createEmptyDocument,
   createLineItem,
@@ -106,6 +109,7 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
   const requestedType = searchParams.get("type") === "quote" ? "quote" : "invoice";
   const draftSession = searchParams.get("session");
   const { user } = useAuth();
+  const { billing, refreshBilling } = useBilling();
   const { t, language } = useLanguage();
   const [paper, setPaper] = useState<PaperDocument | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -290,9 +294,10 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
       setPaper(saved);
       if (draftKey) window.localStorage.removeItem(draftKey);
       setMessage(language === "zh" ? "已保存。" : "Saved.");
+      await refreshBilling();
       if (!documentId) router.replace(`/documents/${saved.id}`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to save document.");
+      setMessage(billingErrorMessage(error, language));
     } finally {
       setSaving(false);
     }
@@ -357,7 +362,7 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
     if (!paper) return;
     setDownloading(true);
     try {
-      const blob = await pdf(<PaperMintPdf document={paper} language={language} />).toBlob();
+      const blob = await pdf(<PaperMintPdf document={paper} language={language} showBranding={billing.showBranding} />).toBlob();
       const url = URL.createObjectURL(blob);
       const anchor = window.document.createElement("a");
       anchor.href = url;
@@ -367,6 +372,11 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
     } finally {
       setDownloading(false);
     }
+  }
+
+  function handlePrint() {
+    setShowPreview(true);
+    window.setTimeout(() => window.print(), 120);
   }
 
   return (
@@ -422,6 +432,12 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
                     {message}
                   </div>
                 )}
+                {!billing.isPaid ? (
+                  <div className={`mt-4 rounded-lg border p-3 text-sm ${billing.documentsUsed >= (billing.documentsLimit ?? 5) && !documentId ? "border-amber-200 bg-amber-50 text-amber-900" : "border-[var(--line)] bg-[#f8faf7] text-[var(--muted)]"}`}>
+                    <p className="font-black">{billing.documentsUsed}/{billing.documentsLimit ?? 5} {language === "zh" ? "份本周免费单据" : "free documents used this week"}</p>
+                    {billing.documentsUsed >= (billing.documentsLimit ?? 5) && !documentId ? <Link className="mt-1 inline-block font-black text-[var(--mint-dark)] underline" href="/pricing">{language === "zh" ? "查看不限量方案" : "View unlimited plans"}</Link> : null}
+                  </div>
+                ) : null}
               </div>
 
               <section className="grid gap-5 lg:grid-cols-2 xl:col-start-1 xl:row-start-1">
@@ -568,7 +584,7 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
                   <Eye className="h-4 w-4" />
                   {t("preview")}
                 </button>
-                <button className="btn-secondary" onClick={() => window.print()} type="button">
+                <button className="btn-secondary" onClick={handlePrint} type="button">
                   <Printer className="h-4 w-4" />
                   {t("print")}
                 </button>
@@ -602,7 +618,7 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
                   {language === "zh" ? "关闭" : "Close"}
                 </button>
               </div>
-              <DocumentPreview document={paper} language={language} />
+              <DocumentPreview document={paper} language={language} showBranding={billing.showBranding} />
             </div>
           </div>
         ) : null}

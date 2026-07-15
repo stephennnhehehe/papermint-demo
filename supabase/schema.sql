@@ -111,6 +111,150 @@ on public.documents (user_id, updated_at desc);
 create index if not exists documents_user_id_type_idx
 on public.documents (user_id, type);
 
+create table if not exists public.billing_accounts (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  stripe_customer_id text unique,
+  stripe_subscription_id text unique,
+  stripe_price_id text,
+  plan text not null default 'free' check (plan in ('free', 'weekly', 'monthly')),
+  status text not null default 'free',
+  current_period_end timestamptz,
+  cancel_at_period_end boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.document_usage (
+  id bigint generated always as identity primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  document_id uuid not null,
+  week_start timestamptz not null,
+  created_at timestamptz not null default now(),
+  unique (user_id, document_id)
+);
+
+create index if not exists document_usage_user_week_idx
+on public.document_usage (user_id, week_start desc);
+
+create or replace function public.australian_week_start(moment timestamptz default now())
+returns timestamptz
+language sql
+stable
+set search_path = public
+as $$
+  select date_trunc('week', moment at time zone 'Australia/Sydney') at time zone 'Australia/Sydney';
+$$;
+
+create or replace function public.get_billing_status()
+returns table (
+  plan text,
+  status text,
+  current_period_end timestamptz,
+  documents_used integer,
+  documents_limit integer,
+  week_starts_at timestamptz
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    case when coalesce(account.status, 'free') in ('active', 'trialing') then account.plan else 'free' end,
+    coalesce(account.status, 'free'),
+    account.current_period_end,
+    (
+      select count(*)::integer
+      from public.document_usage usage
+      where usage.user_id = auth.uid()
+        and usage.week_start = public.australian_week_start()
+    ),
+    case when coalesce(account.status, 'free') in ('active', 'trialing') then null else 5 end,
+    public.australian_week_start()
+  from (select auth.uid() as user_id) viewer
+  left join public.billing_accounts account on account.user_id = viewer.user_id;
+$$;
+
+create or replace function public.enforce_free_document_limit()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  week_start_value timestamptz := public.australian_week_start();
+  usage_count integer;
+  paid_access boolean;
+begin
+  select coalesce(status in ('active', 'trialing'), false)
+  into paid_access
+  from public.billing_accounts
+  where user_id = new.user_id;
+
+  if coalesce(paid_access, false) then
+    return new;
+  end if;
+
+  perform pg_advisory_xact_lock(hashtextextended(new.user_id::text || week_start_value::text, 0));
+
+  select count(*)::integer
+  into usage_count
+  from public.document_usage
+  where user_id = new.user_id
+    and week_start = week_start_value;
+
+  if usage_count >= 5 then
+    raise exception 'FREE_WEEKLY_DOCUMENT_LIMIT_REACHED'
+      using errcode = 'P0001';
+  end if;
+
+  insert into public.document_usage (user_id, document_id, week_start)
+  values (new.user_id, new.id, week_start_value)
+  on conflict (user_id, document_id) do nothing;
+
+  return new;
+end;
+$$;
+
+insert into public.billing_accounts (user_id)
+select id from auth.users
+on conflict (user_id) do nothing;
+
+insert into public.document_usage (user_id, document_id, week_start, created_at)
+select user_id, id, public.australian_week_start(created_at), created_at
+from public.documents
+where created_at >= public.australian_week_start()
+on conflict (user_id, document_id) do nothing;
+
+drop trigger if exists documents_enforce_free_limit on public.documents;
+create trigger documents_enforce_free_limit
+before insert on public.documents
+for each row execute function public.enforce_free_document_limit();
+
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.profiles (id, email)
+  values (new.id, new.email)
+  on conflict (id) do nothing;
+
+  insert into public.billing_accounts (user_id)
+  values (new.id)
+  on conflict (user_id) do nothing;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+after insert on auth.users
+for each row execute function public.handle_new_user();
+
 drop trigger if exists profiles_set_updated_at on public.profiles;
 create trigger profiles_set_updated_at
 before update on public.profiles
@@ -135,6 +279,12 @@ alter table public.profiles enable row level security;
 alter table public.customers enable row level security;
 alter table public.company_profiles enable row level security;
 alter table public.documents enable row level security;
+alter table public.billing_accounts enable row level security;
+alter table public.document_usage enable row level security;
+
+revoke all on public.billing_accounts from anon, authenticated;
+revoke all on public.document_usage from anon, authenticated;
+grant execute on function public.get_billing_status() to authenticated;
 
 drop policy if exists "Users can read own profile" on public.profiles;
 create policy "Users can read own profile"

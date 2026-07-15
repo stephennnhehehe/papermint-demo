@@ -8,6 +8,7 @@ import { AlertCircle, CheckCircle2, Download, FilePlus2, FileText, Loader2, Time
 import { AppShell } from "@/components/app/AppShell";
 import { ProtectedRoute } from "@/components/app/ProtectedRoute";
 import { useAuth } from "@/components/app/AuthProvider";
+import { useBilling } from "@/components/app/BillingProvider";
 import { useLanguage } from "@/components/app/LanguageProvider";
 import { FiscalReportPdf, type FiscalReportRow } from "@/components/pdf/FiscalReportPdf";
 import { fetchDocuments } from "@/lib/api";
@@ -96,6 +97,7 @@ function fiscalReportRows(documents: DocumentRow[]): FiscalReportRow[] {
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  const { billing } = useBilling();
   const { t, language } = useLanguage();
   const [documents, setDocuments] = useState<DocumentRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -160,7 +162,7 @@ export default function DashboardPage() {
       const title = language === "zh" ? "财年营收报表" : "Fiscal year revenue report";
       const subtitle = `${fyStart.toISOString().slice(0, 10)} to ${fyEnd.toISOString().slice(0, 10)}`;
       const blob = await pdf(
-        <FiscalReportPdf rows={stats.fiscalRows} subtitle={subtitle} title={title} />
+        <FiscalReportPdf rows={stats.fiscalRows} showBranding={billing.showBranding} subtitle={subtitle} title={title} />
       ).toBlob();
       const url = URL.createObjectURL(blob);
       const anchor = window.document.createElement("a");

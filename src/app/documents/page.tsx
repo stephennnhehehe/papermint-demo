@@ -7,10 +7,12 @@ import { Check, ChevronDown, Copy, Download, FilePlus2, FileText, Loader2, Mail,
 import { AppShell } from "@/components/app/AppShell";
 import { ProtectedRoute } from "@/components/app/ProtectedRoute";
 import { useAuth } from "@/components/app/AuthProvider";
+import { useBilling } from "@/components/app/BillingProvider";
 import { useLanguage } from "@/components/app/LanguageProvider";
 import { PaperMintPdf } from "@/components/pdf/DocumentPdf";
 import { deleteDocument, fetchDocuments, saveDocument } from "@/lib/api";
 import { formatAud } from "@/lib/calculations";
+import { billingErrorMessage } from "@/lib/billing";
 import { statusForDueDate } from "@/lib/documents";
 import { addDays, documentFromRow, generateDocumentNumber } from "@/lib/documents";
 import type { DocumentRow, DocumentStatus, DocumentType } from "@/lib/types";
@@ -19,6 +21,7 @@ const documentStatuses: DocumentStatus[] = ["draft", "sent", "paid", "overdue", 
 
 export default function DocumentsPage() {
   const { user } = useAuth();
+  const { billing, refreshBilling } = useBilling();
   const { t, language } = useLanguage();
   const [documents, setDocuments] = useState<DocumentRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -83,38 +86,46 @@ export default function DocumentsPage() {
 
   async function handleDuplicate(row: DocumentRow) {
     if (!user) return;
-    const source = documentFromRow(row);
-    await saveDocument(user.id, {
-      ...source,
-      id: undefined,
-      status: "draft",
-      number: generateDocumentNumber("", source.type, documents, source.issueDate),
-      createdAt: undefined,
-      updatedAt: undefined
-    });
-    await loadDocuments();
-    setMessage(language === "zh" ? "已复制为草稿。" : "Copied as draft.");
+    try {
+      const source = documentFromRow(row);
+      await saveDocument(user.id, {
+        ...source,
+        id: undefined,
+        status: "draft",
+        number: generateDocumentNumber("", source.type, documents, source.issueDate),
+        createdAt: undefined,
+        updatedAt: undefined
+      });
+      await Promise.all([loadDocuments(), refreshBilling()]);
+      setMessage(language === "zh" ? "已复制为草稿。" : "Copied as draft.");
+    } catch (error) {
+      setMessage(billingErrorMessage(error, language));
+    }
   }
 
   async function handleConvert(row: DocumentRow) {
     if (!user || row.type !== "quote") return;
-    const source = documentFromRow(row);
-    const issueDate = new Date().toISOString().slice(0, 10);
-    await saveDocument(user.id, {
-      ...source,
-      id: undefined,
-      type: "invoice",
-      title: "TAX INVOICE",
-      status: "draft",
-      number: generateDocumentNumber("", "invoice", documents, issueDate),
-      issueDate,
-      dueDate: addDays(issueDate, 14),
-      convertedFromQuoteId: row.id,
-      createdAt: undefined,
-      updatedAt: undefined
-    });
-    await loadDocuments();
-    setMessage(language === "zh" ? "Quote 已转换为 Invoice 草稿。" : "Quote converted to an invoice draft.");
+    try {
+      const source = documentFromRow(row);
+      const issueDate = new Date().toISOString().slice(0, 10);
+      await saveDocument(user.id, {
+        ...source,
+        id: undefined,
+        type: "invoice",
+        title: "TAX INVOICE",
+        status: "draft",
+        number: generateDocumentNumber("", "invoice", documents, issueDate),
+        issueDate,
+        dueDate: addDays(issueDate, 14),
+        convertedFromQuoteId: row.id,
+        createdAt: undefined,
+        updatedAt: undefined
+      });
+      await Promise.all([loadDocuments(), refreshBilling()]);
+      setMessage(language === "zh" ? "Quote 已转换为 Invoice 草稿。" : "Quote converted to an invoice draft.");
+    } catch (error) {
+      setMessage(billingErrorMessage(error, language));
+    }
   }
 
   async function handleStatusChange(row: DocumentRow, status: DocumentStatus) {
@@ -129,7 +140,7 @@ export default function DocumentsPage() {
 
   async function documentPdfBlob(row: DocumentRow) {
     const source = documentFromRow(row);
-    return pdf(<PaperMintPdf document={source} language={language} />).toBlob();
+    return pdf(<PaperMintPdf document={source} language={language} showBranding={billing.showBranding} />).toBlob();
   }
 
   async function handleDownload(row: DocumentRow) {

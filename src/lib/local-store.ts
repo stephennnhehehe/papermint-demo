@@ -1,6 +1,8 @@
 import { calculateTotals } from "./calculations";
+import { FREE_WEEKLY_DOCUMENT_LIMIT, freeBillingStatus, startOfLocalWeek } from "./billing";
 import { documentFromRow } from "./documents";
 import type {
+  BillingStatus,
   CompanyRecord,
   CompanyProfile,
   Customer,
@@ -28,6 +30,26 @@ function writeJson<T>(key: string, value: T) {
 
 function now() {
   return new Date().toISOString();
+}
+
+function localWeeklyUsage(userId: string) {
+  const key = `document-usage:${userId}`;
+  let usage = readJson<string[] | null>(key, null);
+  const weekStart = startOfLocalWeek().getTime();
+
+  if (!usage) {
+    usage = localFetchDocuments(userId)
+      .map((document) => document.created_at)
+      .filter((createdAt) => new Date(createdAt).getTime() >= weekStart);
+  }
+
+  const currentWeek = usage.filter((createdAt) => new Date(createdAt).getTime() >= weekStart);
+  writeJson(key, currentWeek);
+  return currentWeek;
+}
+
+export function localFetchBillingStatus(userId: string): BillingStatus {
+  return freeBillingStatus(localWeeklyUsage(userId).length);
 }
 
 export function localFetchProfile(userId: string): ProfileRow | null {
@@ -143,6 +165,13 @@ export function localFetchDocument(userId: string, id: string): PaperDocument | 
 export function localSaveDocument(userId: string, document: PaperDocument): PaperDocument {
   const documents = localFetchDocuments(userId);
   const existing = documents.find((item) => item.id === document.id);
+  if (!existing) {
+    const usage = localWeeklyUsage(userId);
+    if (usage.length >= FREE_WEEKLY_DOCUMENT_LIMIT) {
+      throw new Error("FREE_WEEKLY_DOCUMENT_LIMIT_REACHED");
+    }
+    writeJson(`document-usage:${userId}`, [...usage, now()]);
+  }
   const totals = calculateTotals(
     document.lineItems,
     document.orderDiscount,

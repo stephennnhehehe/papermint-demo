@@ -1,0 +1,17 @@
+{
+  "name": "PaperMint",
+  "short_name": "PaperMint",
+  "description": "Simple Australian invoicing for small business.",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#f5f7f4",
+  "theme_color": "#17211b",
+  "icons": [
+    {
+      "src": "/papermint-mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

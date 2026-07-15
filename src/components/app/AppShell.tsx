@@ -4,13 +4,15 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3,
+  CreditCard,
   FileText,
   LogOut,
   Settings,
   Users,
-  WalletCards
 } from "lucide-react";
 import { useAuth } from "./AuthProvider";
+import { useBilling } from "./BillingProvider";
+import { Brand } from "./Brand";
 import { LanguageSwitch } from "./LanguageSwitch";
 import { useLanguage } from "./LanguageProvider";
 
@@ -18,13 +20,15 @@ const nav = [
   { href: "/dashboard", key: "dashboard", icon: BarChart3 },
   { href: "/documents", key: "documents", icon: FileText },
   { href: "/customers", key: "customers", icon: Users },
-  { href: "/settings", key: "settings", icon: Settings }
+  { href: "/settings", key: "settings", icon: Settings },
+  { href: "/pricing", key: "pricing", icon: CreditCard }
 ] as const;
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { configured, demo, signOut, user } = useAuth();
+  const { billing } = useBilling();
   const { language, t } = useLanguage();
   const hasDocumentEditorBar =
     pathname === "/documents/new" || (pathname.startsWith("/documents/") && pathname !== "/documents");
@@ -38,11 +42,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen px-4 py-4 sm:px-6 lg:px-8">
       <header className="mx-auto flex max-w-7xl flex-col gap-3 rounded-lg border border-[var(--line)] bg-white/80 p-3 shadow-sm backdrop-blur md:flex-row md:items-center md:justify-between">
         <Link className="flex min-w-0 items-center gap-3" href="/dashboard">
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-[var(--foreground)] text-white">
-            <WalletCards className="h-5 w-5" />
-          </span>
-          <span className="min-w-0">
-            <span className="block text-xl font-black tracking-normal">PaperMint</span>
+          <Brand />
+          <span className="hidden min-w-0 xl:block">
             <span className="block truncate text-xs font-semibold text-[var(--muted)]">
               {t("appTagline")}
             </span>
@@ -73,7 +74,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span className="rounded-lg bg-[#fff3d8] px-3 py-2 text-xs font-black text-amber-800">
               Demo
             </span>
-          ) : null}
+          ) : billing.isPaid ? (
+            <Link className="rounded-lg bg-[#eaf6ef] px-3 py-2 text-xs font-black text-[var(--mint-dark)]" href="/pricing">
+              {language === "zh" ? "不限量" : "Unlimited"}
+            </Link>
+          ) : (
+            <Link className="rounded-lg bg-[#fff3d8] px-3 py-2 text-xs font-black text-amber-800" href="/pricing">
+              {billing.documentsUsed}/{billing.documentsLimit ?? 5} {language === "zh" ? "本周" : "this week"}
+            </Link>
+          )}
           <button
             className="icon-btn"
             onClick={handleSignOut}
@@ -92,9 +101,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         }`}
       >
         <span>PaperMint © 2026</span>
-        <a className="hover:text-[var(--mint-dark)]" href="/docs">
-          {language === "zh" ? "使用文档" : "Documentation"}
-        </a>
+        <span className="flex flex-wrap gap-4">
+          <Link className="hover:text-[var(--mint-dark)]" href="/pricing">{language === "zh" ? "定价" : "Pricing"}</Link>
+          <Link className="hover:text-[var(--mint-dark)]" href="/docs">{language === "zh" ? "使用文档" : "Documentation"}</Link>
+          <Link className="hover:text-[var(--mint-dark)]" href="/privacy">{language === "zh" ? "隐私" : "Privacy"}</Link>
+          <Link className="hover:text-[var(--mint-dark)]" href="/terms">{language === "zh" ? "条款" : "Terms"}</Link>
+        </span>
       </footer>
     </div>
   );
