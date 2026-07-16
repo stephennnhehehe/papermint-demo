@@ -9,10 +9,13 @@ export async function POST(request: Request) {
     const user = await requireRequestUser(request);
     const { data, error } = await getSupabaseAdmin()
       .from("billing_accounts")
-      .select("stripe_customer_id")
+      .select("stripe_customer_id,lifetime_access")
       .eq("user_id", user.id)
       .maybeSingle();
     if (error) throw error;
+    if (data?.lifetime_access) {
+      return NextResponse.json({ error: "Lifetime access does not require billing management." }, { status: 409 });
+    }
     if (!data?.stripe_customer_id) {
       return NextResponse.json({ error: "No billing account exists yet." }, { status: 404 });
     }

@@ -17,8 +17,8 @@ export default async function PublicDocumentPage({ params }: { params: Promise<{
     if (share?.enabled && (!share.expires_at || new Date(share.expires_at) >= new Date())) {
       const { data: row } = await admin.from("documents").select("*").eq("id", share.document_id).maybeSingle();
       if (row) {
-        const { data: account } = await admin.from("billing_accounts").select("status").eq("user_id", row.user_id).maybeSingle();
-        showBranding = !["active", "trialing"].includes(account?.status ?? "free");
+        const { data: account } = await admin.from("billing_accounts").select("status,lifetime_access").eq("user_id", row.user_id).maybeSingle();
+        showBranding = !account?.lifetime_access && !["active", "trialing"].includes(account?.status ?? "free");
         if (!row.first_viewed_at) {
           const viewedAt = new Date().toISOString();
           await admin.from("documents").update({ first_viewed_at: viewedAt }).eq("id", row.id);

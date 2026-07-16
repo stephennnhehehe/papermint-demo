@@ -38,8 +38,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (body.sendEmail) {
       if (!row.bill_to?.email) return Response.json({ error: "Add a customer email address before sending." }, { status: 400 });
       const document = documentFromRow({ ...row, sent_at: sentAt } as DocumentRow);
-      const { data: account } = await admin.from("billing_accounts").select("status").eq("user_id", user.id).maybeSingle();
-      const showBranding = !["active", "trialing"].includes(account?.status ?? "free");
+      const { data: account } = await admin.from("billing_accounts").select("status,lifetime_access").eq("user_id", user.id).maybeSingle();
+      const showBranding = !account?.lifetime_access && !["active", "trialing"].includes(account?.status ?? "free");
       const pdfElement = React.createElement(PaperMintPdf, { document, showBranding }) as Parameters<typeof renderToBuffer>[0];
       const buffer = await renderToBuffer(pdfElement);
       const dueLabel = document.type === "invoice"

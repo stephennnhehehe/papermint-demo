@@ -45,6 +45,22 @@ describe("billing", () => {
     });
   });
 
+  it("treats lifetime access as unlimited without branding", () => {
+    const billing = normalizeBillingStatus({
+      plan: "lifetime",
+      status: "lifetime",
+      documents_used: 42,
+      documents_limit: null
+    });
+    expect(billing).toMatchObject({
+      plan: "lifetime",
+      isPaid: true,
+      documentsLimit: null,
+      showBranding: false
+    });
+    expect(isFreeDocumentLimitReached(billing)).toBe(false);
+  });
+
   it("turns the database quota code into a useful message", () => {
     expect(billingErrorMessage(new Error("FREE_WEEKLY_DOCUMENT_LIMIT_REACHED"), "en")).toContain(
       "5 free documents"

@@ -49,11 +49,12 @@ Only variables prefixed with `NEXT_PUBLIC_` reach the browser. `SUPABASE_SERVICE
 1. Create a Supabase free project.
 2. Open SQL Editor and run [`supabase/schema.sql`](./supabase/schema.sql).
 3. Run [`supabase/migrations/20260716_cashflow_expenses.sql`](./supabase/migrations/20260716_cashflow_expenses.sql) to add document delivery, reminders, expenses and BAS data.
-4. In Authentication → Providers, enable Email.
-5. In Authentication → URL Configuration, set the production Site URL and add both `http://localhost:3000/**` and the production `https://...vercel.app/**` redirect URLs. Password reset links return to `/reset-password`.
-6. In Project Settings → API Keys, copy the project URL, publishable/anon key and server-only service role key into `.env.local`.
-7. For quick local QA, either confirm the signup email or temporarily disable email confirmation.
-8. Restart `pnpm dev`.
+4. Run [`supabase/migrations/20260716_lifetime_access.sql`](./supabase/migrations/20260716_lifetime_access.sql) to support managed complimentary accounts.
+5. In Authentication → Providers, enable Email.
+6. In Authentication → URL Configuration, set the production Site URL and add both `http://localhost:3000/**` and the production `https://...vercel.app/**` redirect URLs. Password reset links return to `/reset-password`.
+7. In Project Settings → API Keys, copy the project URL, publishable/anon key and server-only service role key into `.env.local`.
+8. For quick local QA, either confirm the signup email or temporarily disable email confirmation.
+9. Restart `pnpm dev`.
 
 ### Google login
 

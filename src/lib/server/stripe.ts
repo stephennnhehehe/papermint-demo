@@ -77,9 +77,9 @@ export async function syncSubscription(subscription: Stripe.Subscription, fallba
 export async function hasActiveSubscription(userId: string) {
   const { data, error } = await getSupabaseAdmin()
     .from("billing_accounts")
-    .select("status")
+    .select("status,lifetime_access")
     .eq("user_id", userId)
     .maybeSingle();
   if (error) throw error;
-  return isActiveSubscription(data?.status);
+  return Boolean(data?.lifetime_access) || isActiveSubscription(data?.status);
 }

@@ -9,7 +9,7 @@ export type DocumentStatus =
 
 export type DiscountType = "percent" | "fixed";
 
-export type BillingPlan = "free" | "weekly" | "monthly";
+export type BillingPlan = "free" | "weekly" | "monthly" | "lifetime";
 
 export type BillingStatus = {
   plan: BillingPlan;

@@ -23,7 +23,7 @@ export function isPaidPlan(value: unknown): value is PaidPlan {
 }
 
 export function isActiveSubscription(status: string | null | undefined) {
-  return status === "active" || status === "trialing";
+  return status === "active" || status === "trialing" || status === "lifetime";
 }
 
 export function startOfLocalWeek(date = new Date()) {
@@ -56,8 +56,9 @@ export function normalizeBillingStatus(value: {
   documents_limit?: number | null;
   week_starts_at?: string | null;
 }): BillingStatus {
-  const active = isActiveSubscription(value.status);
-  const plan: BillingPlan = active && isPaidPlan(value.plan) ? value.plan : "free";
+  const lifetime = value.status === "lifetime" || value.plan === "lifetime";
+  const active = lifetime || isActiveSubscription(value.status);
+  const plan: BillingPlan = lifetime ? "lifetime" : active && isPaidPlan(value.plan) ? value.plan : "free";
   return {
     plan,
     status: value.status ?? "free",

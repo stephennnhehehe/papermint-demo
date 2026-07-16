@@ -23,6 +23,7 @@ import { LanguageSwitch } from "@/components/app/LanguageSwitch";
 import { useAuth } from "@/components/app/AuthProvider";
 import { useLanguage } from "@/components/app/LanguageProvider";
 import { getSupabaseClient } from "@/lib/supabase";
+import { authEmailForSignIn } from "@/lib/auth-identifier";
 import { pickLanguage, type Language } from "@/lib/i18n";
 
 export default function LoginPage() {
@@ -70,7 +71,7 @@ function LoginContent() {
       const supabase = getSupabaseClient();
       const result =
         mode === "signin"
-          ? await supabase.auth.signInWithPassword({ email, password })
+          ? await supabase.auth.signInWithPassword({ email: authEmailForSignIn(email), password })
           : await supabase.auth.signUp({
               email,
               password,
@@ -210,8 +211,8 @@ function LoginContent() {
 
             <form className="grid gap-4" onSubmit={handleSubmit}>
               <label>
-                <span className="label">{t("email")}</span>
-                <input autoComplete="email" className="field" onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" required type="email" value={email} />
+                <span className="label">{mode === "signin" ? copy({ en: "Email or test account", zh: "邮箱或测试账号", vi: "Email hoặc tài khoản thử", ar: "البريد أو حساب الاختبار" }) : t("email")}</span>
+                <input autoComplete={mode === "signin" ? "username" : "email"} className="field" onChange={(event) => setEmail(event.target.value)} placeholder={mode === "signin" ? "you@example.com / test-01" : "you@example.com"} required type={mode === "signin" ? "text" : "email"} value={email} />
               </label>
               <label>
                 <span className="flex items-center justify-between gap-3">

@@ -33,6 +33,7 @@ function PricingContent() {
 
   async function choosePlan(plan: PaidPlan) {
     setMessage("");
+    if (billing.plan === "lifetime") return;
     if (billing.isPaid) {
       await manageBilling();
       return;
@@ -61,7 +62,7 @@ function PricingContent() {
   }
 
   async function manageBilling() {
-    if (!user || demo) return;
+    if (!user || demo || billing.plan === "lifetime") return;
     setMessage("");
     setBusyPlan("portal");
     try {
@@ -75,8 +76,10 @@ function PricingContent() {
   const freeCurrent = !billingLoading && isCurrentBillingPlan(billing, "free");
   const weeklyCurrent = !billingLoading && isCurrentBillingPlan(billing, "weekly");
   const monthlyCurrent = !billingLoading && isCurrentBillingPlan(billing, "monthly");
+  const lifetimeCurrent = !billingLoading && billing.plan === "lifetime";
   const currentLabel = copy({ en: "Current plan", zh: "当前方案", vi: "Gói hiện tại", ar: "الخطة الحالية" });
   const manageLabel = copy({ en: "Manage plan", zh: "管理方案", vi: "Quản lý gói", ar: "إدارة الخطة" });
+  const includedLabel = copy({ en: "Included forever", zh: "永久免费", vi: "Miễn phí vĩnh viễn", ar: "مشمول مدى الحياة" });
 
   const page = (
     <div className="mx-auto w-full max-w-6xl">
@@ -97,46 +100,46 @@ function PricingContent() {
 
       <section className="grid gap-4 lg:grid-cols-3">
         <PriceCard
-          buttonLabel={freeCurrent ? currentLabel : billing.isPaid ? manageLabel : copy({ en: "Free plan", zh: "免费方案", vi: "Gói miễn phí", ar: "الخطة المجانية" })}
+          buttonLabel={lifetimeCurrent ? includedLabel : freeCurrent ? currentLabel : billing.isPaid ? manageLabel : copy({ en: "Free plan", zh: "免费方案", vi: "Gói miễn phí", ar: "الخطة المجانية" })}
           current={freeCurrent}
           currentBadge={currentLabel}
           description={copy({ en: "For getting started or occasional client work.", zh: "适合刚开始开票或偶尔接单。", vi: "Phù hợp để bắt đầu hoặc làm việc không thường xuyên.", ar: "مناسب للبدء أو للعمل المتقطع." })}
-          disabled={freeCurrent}
+          disabled={freeCurrent || lifetimeCurrent}
           features={copy({
             en: ["Every product feature", "5 invoices or quotes each week", "PDF, FY reports and customer management", "Small PaperMint footer included"],
             zh: ["全部产品功能", "每周 5 份 Invoice 或 Quote", "PDF、FY 报表和客户管理", "含小型 PaperMint 页脚"],
             vi: ["Mọi tính năng", "5 hóa đơn hoặc báo giá mỗi tuần", "PDF, báo cáo năm tài chính và khách hàng", "Có chân trang PaperMint nhỏ"],
             ar: ["جميع الميزات", "5 فواتير أو عروض أسعار أسبوعياً", "PDF وتقارير السنة المالية وإدارة العملاء", "يتضمن تذييل PaperMint صغيراً"]
           })}
-          onClick={billing.isPaid ? manageBilling : undefined}
+          onClick={lifetimeCurrent ? undefined : billing.isPaid ? manageBilling : undefined}
           price="$0"
           title={copy({ en: "Free", zh: "免费", vi: "Miễn phí", ar: "مجاني" })}
         />
         <PriceCard
-          buttonLabel={weeklyCurrent ? currentLabel : billing.isPaid ? manageLabel : copy({ en: "Choose weekly", zh: "选择周付", vi: "Chọn theo tuần", ar: "اختر الأسبوعي" })}
+          buttonLabel={lifetimeCurrent ? includedLabel : weeklyCurrent ? currentLabel : billing.isPaid ? manageLabel : copy({ en: "Choose weekly", zh: "选择周付", vi: "Chọn theo tuần", ar: "اختر الأسبوعي" })}
           busy={busyPlan === "weekly" || (busyPlan === "portal" && billing.plan === "weekly")}
           current={weeklyCurrent}
           currentBadge={currentLabel}
           description={copy({ en: "A small commitment for short projects.", zh: "短期项目或先小步体验。", vi: "Linh hoạt cho dự án ngắn hạn.", ar: "التزام بسيط للمشاريع القصيرة." })}
-          disabled={weeklyCurrent}
+          disabled={weeklyCurrent || lifetimeCurrent}
           features={copy({ en: ["Unlimited documents", "Remove PaperMint footer", "All current and new features", "Secure Stripe checkout"], zh: ["不限单据数量", "移除 PaperMint 页脚", "包含全部现有及新增功能", "Stripe 安全结账"], vi: ["Chứng từ không giới hạn", "Xóa chân trang PaperMint", "Mọi tính năng hiện tại và mới", "Thanh toán Stripe an toàn"], ar: ["مستندات غير محدودة", "إزالة تذييل PaperMint", "جميع الميزات الحالية والجديدة", "دفع آمن عبر Stripe"] })}
           interval={copy({ en: "/ week, AUD", zh: "/ 周，AUD", vi: "/ tuần, AUD", ar: "/ أسبوع، AUD" })}
-          onClick={() => choosePlan("weekly")}
+          onClick={lifetimeCurrent ? undefined : () => choosePlan("weekly")}
           price="$0.99"
           title={copy({ en: "Flexible weekly", zh: "灵活周付", vi: "Linh hoạt theo tuần", ar: "أسبوعي مرن" })}
         />
         <PriceCard
           badge={copy({ en: "BEST VALUE", zh: "最划算", vi: "GIÁ TỐT NHẤT", ar: "أفضل قيمة" })}
-          buttonLabel={monthlyCurrent ? currentLabel : billing.isPaid ? manageLabel : copy({ en: "Choose monthly", zh: "选择月付", vi: "Chọn theo tháng", ar: "اختر الشهري" })}
+          buttonLabel={lifetimeCurrent ? includedLabel : monthlyCurrent ? currentLabel : billing.isPaid ? manageLabel : copy({ en: "Choose monthly", zh: "选择月付", vi: "Chọn theo tháng", ar: "اختر الشهري" })}
           busy={busyPlan === "monthly" || (busyPlan === "portal" && billing.plan === "monthly")}
           current={monthlyCurrent}
           currentBadge={currentLabel}
           description={copy({ en: "For regular use, about $0.69 per week.", zh: "稳定使用，约每周只需 $0.69。", vi: "Dùng thường xuyên, khoảng $0.69 mỗi tuần.", ar: "للاستخدام المنتظم، حوالي 0.69$ أسبوعياً." })}
-          disabled={monthlyCurrent}
+          disabled={monthlyCurrent || lifetimeCurrent}
           emphasized
           features={copy({ en: ["Unlimited documents", "Remove PaperMint footer", "All current and new features", "Cancel in the billing portal anytime"], zh: ["不限单据数量", "移除 PaperMint 页脚", "包含全部现有及新增功能", "随时通过账单门户取消"], vi: ["Chứng từ không giới hạn", "Xóa chân trang PaperMint", "Mọi tính năng hiện tại và mới", "Hủy bất cứ lúc nào trong cổng thanh toán"], ar: ["مستندات غير محدودة", "إزالة تذييل PaperMint", "جميع الميزات الحالية والجديدة", "الإلغاء في أي وقت من بوابة الفوترة"] })}
           interval={copy({ en: "/ month, AUD", zh: "/ 月，AUD", vi: "/ tháng, AUD", ar: "/ شهر، AUD" })}
-          onClick={() => choosePlan("monthly")}
+          onClick={lifetimeCurrent ? undefined : () => choosePlan("monthly")}
           price="$2.99"
           title={copy({ en: "Easy monthly", zh: "轻松月付", vi: "Dễ dàng theo tháng", ar: "شهري سهل" })}
         />
@@ -145,13 +148,13 @@ function PricingContent() {
       {billing.isPaid && !demo ? (
         <div className="mt-6 flex flex-col items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-5 sm:flex-row">
           <div>
-            <p className="font-black">{copy({ en: `Your ${billing.plan} plan is active`, zh: `你的${billing.plan === "weekly" ? "周付" : "月付"}方案已启用`, vi: `Gói ${billing.plan === "weekly" ? "tuần" : "tháng"} đang hoạt động`, ar: `خطتك ${billing.plan === "weekly" ? "الأسبوعية" : "الشهرية"} نشطة` })}</p>
+            <p className="font-black">{lifetimeCurrent ? copy({ en: "Your lifetime complimentary access is active", zh: "你的永久免费权限已启用", vi: "Quyền truy cập miễn phí vĩnh viễn đã được kích hoạt", ar: "تم تفعيل وصولك المجاني مدى الحياة" }) : copy({ en: `Your ${billing.plan} plan is active`, zh: `你的${billing.plan === "weekly" ? "周付" : "月付"}方案已启用`, vi: `Gói ${billing.plan === "weekly" ? "tuần" : "tháng"} đang hoạt động`, ar: `خطتك ${billing.plan === "weekly" ? "الأسبوعية" : "الشهرية"} نشطة` })}</p>
             <p className="mt-1 text-sm text-[var(--muted)]">{copy({ en: "Unlimited documents are enabled and PaperMint branding is removed from exports.", zh: "已启用不限量单据，导出文件不再显示 PaperMint 页脚。", vi: "Đã bật chứng từ không giới hạn và xóa thương hiệu PaperMint khỏi bản xuất.", ar: "تم تفعيل المستندات غير المحدودة وإزالة علامة PaperMint من الملفات المصدرة." })}</p>
           </div>
-          <button className="btn-secondary shrink-0 bg-white" disabled={busyPlan === "portal"} onClick={manageBilling} type="button">
+          {!lifetimeCurrent ? <button className="btn-secondary shrink-0 bg-white" disabled={busyPlan === "portal"} onClick={manageBilling} type="button">
             {busyPlan === "portal" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
             {manageLabel}
-          </button>
+          </button> : <span className="rounded-lg bg-white px-3 py-2 text-sm font-black text-[var(--mint-dark)]">{includedLabel}</span>}
         </div>
       ) : null}
 
