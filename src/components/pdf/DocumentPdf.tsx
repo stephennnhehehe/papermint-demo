@@ -161,6 +161,23 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 700
   },
+  signature: {
+    marginTop: 18,
+    marginLeft: "auto",
+    width: 300,
+    flexDirection: "row",
+    gap: 18,
+    color: "#66736b",
+    fontSize: 8
+  },
+  signatureMain: { width: 204 },
+  signatureDate: { width: 78 },
+  signatureLine: {
+    height: 22,
+    borderBottomWidth: 1,
+    borderBottomColor: "#9aa59d",
+    marginBottom: 4
+  },
   footer: {
     flexDirection: "row",
     gap: 24,
@@ -216,7 +233,8 @@ export function PaperMintPdf({
     valid: "Valid until", from: "From", bill: "Bill To", ship: "Ship To",
     desc: "Description", qty: "Qty", price: "Unit price", itemDiscount: "Discount",
     gstColumn: "GST", amount: "Amount", subtotal: "Subtotal", discount: "Order discount",
-    gst: "GST", total: "Total", payment: "Payment", notes: "Notes"
+    gst: "GST", total: "Total", payment: "Payment", notes: "Notes",
+    acceptedBy: "Accepted by / Authorised signature", signatureDate: "Date"
   };
   const orderDiscountLabel =
     document.orderDiscount.type === "percent" && document.orderDiscount.value > 0
@@ -229,7 +247,7 @@ export function PaperMintPdf({
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <Text style={styles.docTitle}>
-              {document.type === "invoice" ? labels.invoice : labels.quote}
+              {document.type === "invoice" ? (document.gstEnabled ? labels.invoice : "INVOICE") : labels.quote}
             </Text>
             <Text style={styles.docNumber}>{document.number || "DRAFT"}</Text>
             <Text style={[styles.muted, { marginTop: 8 }]}>
@@ -284,17 +302,29 @@ export function PaperMintPdf({
           </View>
         ))}
 
-        <View style={styles.totals}>
-          <PdfAmount label={labels.subtotal} value={formatAud(totals.subtotal)} />
-          {totals.orderDiscountTotal > 0 ? (
-            <PdfAmount label={orderDiscountLabel} value={`-${formatAud(totals.orderDiscountTotal)}`} />
-          ) : null}
-          {document.gstEnabled ? (
-            <PdfAmount label={`${labels.gst} ${document.gstRate}%`} value={formatAud(totals.gst)} />
-          ) : null}
-          <View style={styles.grandTotal}>
-            <Text>{labels.total}</Text>
-            <Text style={styles.grandTotalValue}>{formatAud(totals.total)}</Text>
+        <View wrap={false}>
+          <View style={styles.totals}>
+            <PdfAmount label={labels.subtotal} value={formatAud(totals.subtotal)} />
+            {totals.orderDiscountTotal > 0 ? (
+              <PdfAmount label={orderDiscountLabel} value={`-${formatAud(totals.orderDiscountTotal)}`} />
+            ) : null}
+            {document.gstEnabled ? (
+              <PdfAmount label={`${labels.gst} ${document.gstRate}%`} value={formatAud(totals.gst)} />
+            ) : null}
+            <View style={styles.grandTotal}>
+              <Text>{labels.total}</Text>
+              <Text style={styles.grandTotalValue}>{formatAud(totals.total)}</Text>
+            </View>
+          </View>
+          <View style={styles.signature}>
+            <View style={styles.signatureMain}>
+              <View style={styles.signatureLine} />
+              <Text>{labels.acceptedBy}</Text>
+            </View>
+            <View style={styles.signatureDate}>
+              <View style={styles.signatureLine} />
+              <Text>{labels.signatureDate}</Text>
+            </View>
           </View>
         </View>
 

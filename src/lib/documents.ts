@@ -146,6 +146,7 @@ export function documentFromRow(row: DocumentRow): PaperDocument {
     title: row.title,
     number: row.number,
     customerId: row.customer_id,
+    companyProfileId: row.company_profile_id,
     currency: row.currency,
     issueDate: row.issue_date,
     dueDate: row.due_date ?? "",
@@ -163,6 +164,12 @@ export function documentFromRow(row: DocumentRow): PaperDocument {
     paymentMethods: row.payment_methods ?? "",
     logoUrl: row.logo_url ?? "",
     convertedFromQuoteId: row.converted_from_quote_id,
+    sentAt: row.sent_at ?? null,
+    firstViewedAt: row.first_viewed_at ?? null,
+    acceptedAt: row.accepted_at ?? null,
+    acceptedBy: row.accepted_by ?? null,
+    convertedAt: row.converted_at ?? null,
+    paidAt: row.paid_at ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };

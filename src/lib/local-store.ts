@@ -7,8 +7,11 @@ import type {
   CompanyProfile,
   Customer,
   DocumentRow,
+  Expense,
+  ExpenseReceipt,
   PaperDocument,
-  ProfileRow
+  ProfileRow,
+  ReminderSettings
 } from "./types";
 
 const prefix = "papermint:local";
@@ -101,6 +104,9 @@ export function localUpsertCompanyProfile(
     address: company.address ?? null,
     logo_url: company.logo_url ?? null,
     is_default: Boolean(company.is_default),
+    gst_registered: company.gst_registered ?? true,
+    gst_accounting_basis: company.gst_accounting_basis ?? "cash",
+    bas_frequency: company.bas_frequency ?? "quarterly",
     created_at: existing?.created_at ?? now(),
     updated_at: now()
   };
@@ -186,6 +192,7 @@ export function localSaveDocument(userId: string, document: PaperDocument): Pape
     title: document.title,
     number: document.number,
     customer_id: document.customerId ?? null,
+    company_profile_id: document.companyProfileId ?? null,
     currency: document.currency,
     issue_date: document.issueDate,
     due_date: document.dueDate || null,
@@ -202,6 +209,12 @@ export function localSaveDocument(userId: string, document: PaperDocument): Pape
     logo_url: document.logoUrl,
     totals,
     converted_from_quote_id: document.convertedFromQuoteId ?? null,
+    sent_at: document.sentAt ?? (document.status === "sent" ? now() : existing?.sent_at ?? null),
+    first_viewed_at: document.firstViewedAt ?? existing?.first_viewed_at ?? null,
+    accepted_at: document.acceptedAt ?? existing?.accepted_at ?? null,
+    accepted_by: document.acceptedBy ?? existing?.accepted_by ?? null,
+    converted_at: document.convertedAt ?? existing?.converted_at ?? null,
+    paid_at: document.status === "paid" ? document.paidAt ?? existing?.paid_at ?? now() : null,
     created_at: existing?.created_at ?? now(),
     updated_at: now()
   };
@@ -214,4 +227,73 @@ export function localDeleteDocument(userId: string, id: string) {
     `documents:${userId}`,
     localFetchDocuments(userId).filter((document) => document.id !== id)
   );
+}
+
+export function localFetchExpenses(userId: string): Expense[] {
+  return readJson<Expense[]>(`expenses:${userId}`, []).sort((a, b) =>
+    b.expense_date.localeCompare(a.expense_date)
+  );
+}
+
+export function localUpsertExpense(
+  userId: string,
+  expense: Partial<Expense> & Pick<Expense, "merchant" | "expense_date" | "category" | "total_amount" | "gst_amount">
+): Expense {
+  const expenses = localFetchExpenses(userId);
+  const existing = expenses.find((item) => item.id === expense.id);
+  const saved: Expense = {
+    id: expense.id ?? crypto.randomUUID(),
+    user_id: userId,
+    company_profile_id: expense.company_profile_id ?? null,
+    merchant: expense.merchant,
+    expense_date: expense.expense_date,
+    category: expense.category,
+    purchase_type: expense.purchase_type ?? "non_capital",
+    total_amount: Number(expense.total_amount) || 0,
+    gst_amount: Number(expense.gst_amount) || 0,
+    gst_claimable: expense.gst_claimable ?? true,
+    payment_method: expense.payment_method ?? null,
+    notes: expense.notes ?? null,
+    created_at: existing?.created_at ?? now(),
+    updated_at: now()
+  };
+  writeJson(`expenses:${userId}`, [saved, ...expenses.filter((item) => item.id !== saved.id)]);
+  return saved;
+}
+
+export function localDeleteExpense(userId: string, id: string) {
+  writeJson(`expenses:${userId}`, localFetchExpenses(userId).filter((expense) => expense.id !== id));
+  writeJson(`expense-receipts:${userId}`, localFetchExpenseReceipts(userId).filter((receipt) => receipt.expense_id !== id));
+}
+
+export function localFetchExpenseReceipts(userId: string): ExpenseReceipt[] {
+  return readJson<ExpenseReceipt[]>(`expense-receipts:${userId}`, []);
+}
+
+export function localSaveExpenseReceipt(userId: string, receipt: ExpenseReceipt) {
+  const receipts = localFetchExpenseReceipts(userId);
+  writeJson(`expense-receipts:${userId}`, [receipt, ...receipts.filter((item) => item.id !== receipt.id)]);
+}
+
+export function localDeleteExpenseReceipt(userId: string, id: string) {
+  writeJson(`expense-receipts:${userId}`, localFetchExpenseReceipts(userId).filter((receipt) => receipt.id !== id));
+}
+
+export function localFetchReminderSettings(userId: string): ReminderSettings {
+  return readJson<ReminderSettings>(`reminders:${userId}`, {
+    user_id: userId,
+    enabled: false,
+    before_days: [3],
+    overdue_days: [3, 7, 14],
+    updated_at: now()
+  });
+}
+
+export function localSaveReminderSettings(
+  userId: string,
+  settings: Pick<ReminderSettings, "enabled" | "before_days" | "overdue_days">
+) {
+  const saved: ReminderSettings = { user_id: userId, ...settings, updated_at: now() };
+  writeJson(`reminders:${userId}`, saved);
+  return saved;
 }

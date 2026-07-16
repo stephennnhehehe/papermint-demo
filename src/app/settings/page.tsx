@@ -11,13 +11,15 @@ import {
   deleteCompanyProfile,
   fetchCompanyProfiles,
   fetchProfile,
+  fetchReminderSettings,
   saveProfile,
+  saveReminderSettings,
   upsertCompanyProfile
 } from "@/lib/api";
 import { defaultCompanyProfile } from "@/lib/documents";
 import { uploadLogo } from "@/lib/storage";
 import { pickLanguage } from "@/lib/i18n";
-import type { CompanyProfile, CompanyRecord } from "@/lib/types";
+import type { CompanyProfile, CompanyRecord, ReminderSettings } from "@/lib/types";
 
 type CompanyForm = {
   id?: string;
@@ -28,6 +30,9 @@ type CompanyForm = {
   address: string;
   logo_url: string;
   is_default: boolean;
+  gst_registered: boolean;
+  gst_accounting_basis: "cash" | "accrual";
+  bas_frequency: "monthly" | "quarterly" | "annual";
 };
 
 const emptyCompanyForm: CompanyForm = {
@@ -37,7 +42,10 @@ const emptyCompanyForm: CompanyForm = {
   abn: "",
   address: "",
   logo_url: "",
-  is_default: false
+  is_default: false,
+  gst_registered: true,
+  gst_accounting_basis: "cash",
+  bas_frequency: "quarterly"
 };
 
 function toCompanyForm(company: CompanyRecord): CompanyForm {
@@ -49,7 +57,10 @@ function toCompanyForm(company: CompanyRecord): CompanyForm {
     abn: company.abn ?? "",
     address: company.address ?? "",
     logo_url: company.logo_url ?? "",
-    is_default: company.is_default
+    is_default: company.is_default,
+    gst_registered: company.gst_registered ?? true,
+    gst_accounting_basis: company.gst_accounting_basis ?? "cash",
+    bas_frequency: company.bas_frequency ?? "quarterly"
   };
 }
 
@@ -64,16 +75,19 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [reminders, setReminders] = useState<ReminderSettings | null>(null);
 
   const loadSettings = useCallback(async () => {
     if (!user) return;
     setLoading(true);
     try {
-      const [row, companyRows] = await Promise.all([
+      const [row, companyRows, reminderRow] = await Promise.all([
         fetchProfile(user.id),
-        fetchCompanyProfiles(user.id)
+        fetchCompanyProfiles(user.id),
+        fetchReminderSettings(user.id)
       ]);
       setCompanies(companyRows);
+      setReminders(reminderRow);
       if (row) {
         setProfile({
           business_name: row.business_name ?? "",
@@ -115,7 +129,10 @@ export default function SettingsPage() {
           abn: profile.abn,
           address: profile.address,
           logo_url: profile.logo_url,
-          is_default: true
+          is_default: true,
+          gst_registered: currentDefault?.gst_registered ?? true,
+          gst_accounting_basis: currentDefault?.gst_accounting_basis ?? "cash",
+          bas_frequency: currentDefault?.bas_frequency ?? "quarterly"
         });
         setCompanies((current) => [
           savedCompany,
@@ -132,6 +149,19 @@ export default function SettingsPage() {
       const issue = error instanceof Error ? error.message : "Unable to save settings.";
       setMessage(issue);
       showToast(issue, "error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleReminderSave() {
+    if (!user || !reminders) return;
+    setSaving(true);
+    try {
+      await saveReminderSettings(user.id, reminders);
+      showToast(copy({ en: "Reminder settings saved.", zh: "提醒设置已保存。", vi: "Đã lưu cài đặt nhắc nhở.", ar: "تم حفظ إعدادات التذكير." }));
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Unable to save reminder settings.", "error");
     } finally {
       setSaving(false);
     }
@@ -292,6 +322,14 @@ export default function SettingsPage() {
               <Field label={copy({ en: "Phone", zh: "电话", vi: "Điện thoại", ar: "الهاتف" })} value={companyForm.phone} onChange={(value) => setCompanyForm({ ...companyForm, phone: value })} />
             </div>
             <TextArea label={copy({ en: "Address", zh: "地址", vi: "Địa chỉ", ar: "العنوان" })} value={companyForm.address} onChange={(value) => setCompanyForm({ ...companyForm, address: value })} />
+            <div className="grid gap-3 sm:grid-cols-3">
+              <label className="flex items-center justify-between gap-3 rounded-lg border border-[var(--line)] bg-white/70 p-3 text-sm font-bold">
+                <span>{copy({ en: "GST registered", zh: "已注册 GST", vi: "Đã đăng ký GST", ar: "مسجل في GST" })}</span>
+                <input checked={companyForm.gst_registered} onChange={(event) => setCompanyForm({ ...companyForm, gst_registered: event.target.checked })} type="checkbox" />
+              </label>
+              <SelectField label={copy({ en: "GST basis", zh: "GST 记账方式", vi: "Cơ sở GST", ar: "أساس GST" })} value={companyForm.gst_accounting_basis} onChange={(value) => setCompanyForm({ ...companyForm, gst_accounting_basis: value as CompanyForm["gst_accounting_basis"] })} options={[{ value: "cash", label: "Cash" }, { value: "accrual", label: "Accrual" }]} />
+              <SelectField label={copy({ en: "BAS frequency", zh: "BAS 周期", vi: "Chu kỳ BAS", ar: "دورية BAS" })} value={companyForm.bas_frequency} onChange={(value) => setCompanyForm({ ...companyForm, bas_frequency: value as CompanyForm["bas_frequency"] })} options={[{ value: "monthly", label: "Monthly" }, { value: "quarterly", label: "Quarterly" }, { value: "annual", label: "Annual" }]} />
+            </div>
             <label className="flex items-center justify-between gap-3 rounded-lg border border-[var(--line)] bg-white/70 p-3 text-sm font-bold">
               <span>{copy({ en: "Default issuer", zh: "设为默认开票方", vi: "Bên phát hành mặc định", ar: "جهة الإصدار الافتراضية" })}</span>
               <input checked={companyForm.is_default} onChange={(event) => setCompanyForm({ ...companyForm, is_default: event.target.checked })} type="checkbox" />
@@ -347,11 +385,28 @@ export default function SettingsPage() {
               ))
             )}
           </div>
+          {reminders ? (
+            <div className="mt-6 border-t border-[var(--line)] pt-5">
+              <div className="mb-3">
+                <h3 className="text-lg font-black">{copy({ en: "Automatic reminders", zh: "自动提醒", vi: "Nhắc nhở tự động", ar: "التذكيرات التلقائية" })}</h3>
+                <p className="text-sm font-semibold text-[var(--muted)]">{copy({ en: "PaperMint checks due dates daily and sends each reminder once.", zh: "PaperMint 每天检查到期日，每种提醒只发送一次。", vi: "PaperMint kiểm tra hạn thanh toán hàng ngày và chỉ gửi mỗi lời nhắc một lần.", ar: "يفحص PaperMint تواريخ الاستحقاق يومياً ويرسل كل تذكير مرة واحدة." })}</p>
+              </div>
+              <label className="flex items-center justify-between rounded-lg border border-[var(--line)] bg-white/70 p-3 text-sm font-bold">
+                <span>{copy({ en: "Enable email reminders", zh: "启用邮件提醒", vi: "Bật nhắc nhở qua email", ar: "تفعيل تذكيرات البريد" })}</span>
+                <input checked={reminders.enabled} onChange={(event) => setReminders({ ...reminders, enabled: event.target.checked })} type="checkbox" />
+              </label>
+              <button className="btn-secondary mt-3" disabled={saving} onClick={handleReminderSave} type="button">{t("save")}</button>
+            </div>
+          ) : null}
         </section>
         </div>
       </AppShell>
     </ProtectedRoute>
   );
+}
+
+function SelectField({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: Array<{ value: string; label: string }> }) {
+  return <label><span className="label">{label}</span><select className="field" value={value} onChange={(event) => onChange(event.target.value)}>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>;
 }
 
 function Field({

@@ -100,6 +100,9 @@ function fallbackCompanyRecord(
     address: profile.address,
     logo_url: profile.logo_url,
     is_default: true,
+    gst_registered: true,
+    gst_accounting_basis: "cash",
+    bas_frequency: "quarterly",
     created_at: timestamp,
     updated_at: timestamp
   };
@@ -196,6 +199,10 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
             (company.abn ?? "") === (nextPaper?.company.abn ?? "")
         );
         setSelectedCompanyProfileId(matchedCompany?.id ?? "");
+        if (matchedCompany && !nextPaper.companyProfileId) {
+          nextPaper = { ...nextPaper, companyProfileId: matchedCompany.id === "default-profile" ? null : matchedCompany.id };
+          setPaper(nextPaper);
+        }
       } catch (error) {
         setMessage(error instanceof Error ? error.message : "Unable to load document.");
       } finally {
@@ -275,6 +282,7 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
     const company = companyProfiles.find((candidate) => candidate.id === companyId);
     if (!companyId) {
       updatePaper({
+        companyProfileId: null,
         company: { ...emptyParty },
         logoUrl: ""
       });
@@ -282,8 +290,11 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
     }
     if (!company) return;
     updatePaper({
+      companyProfileId: company.id === "default-profile" ? null : company.id,
       company: companyRecordToParty(company),
-      logoUrl: company.logo_url ?? ""
+      logoUrl: company.logo_url ?? "",
+      gstEnabled: company.gst_registered ? paper?.gstEnabled ?? true : false,
+      title: paper?.type === "invoice" ? (company.gst_registered ? "TAX INVOICE" : "INVOICE") : "QUOTE"
     });
   }
 

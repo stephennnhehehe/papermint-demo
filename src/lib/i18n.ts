@@ -12,6 +12,7 @@ const en = {
   dashboard: "Dashboard",
   documents: "Documents",
   customers: "Customers",
+  expenses: "Expenses",
   settings: "Settings",
   pricing: "Pricing",
   signOut: "Sign out",
@@ -63,7 +64,7 @@ export const dictionaries: Record<Language, Record<TranslationKey, string>> = {
   en,
   zh: {
     appTagline: "无需复杂会计知识的澳洲发票工具",
-    dashboard: "看板", documents: "单据", customers: "客户", settings: "设置", pricing: "定价",
+    dashboard: "看板", documents: "单据", customers: "客户", expenses: "费用", settings: "设置", pricing: "定价",
     signOut: "退出", signIn: "登录", register: "注册", email: "邮箱", password: "密码",
     invoice: "发票", quote: "报价单", newInvoice: "新建发票", newQuote: "新建报价",
     totalInvoices: "发票数", paid: "已付款", unpaid: "未付款", overdue: "逾期", revenueTrend: "月度收入",
@@ -76,7 +77,7 @@ export const dictionaries: Record<Language, Record<TranslationKey, string>> = {
   },
   vi: {
     appTagline: "Lập hóa đơn Úc mà không cần kế toán phức tạp",
-    dashboard: "Tổng quan", documents: "Chứng từ", customers: "Khách hàng", settings: "Cài đặt", pricing: "Bảng giá",
+    dashboard: "Tổng quan", documents: "Chứng từ", customers: "Khách hàng", expenses: "Chi phí", settings: "Cài đặt", pricing: "Bảng giá",
     signOut: "Đăng xuất", signIn: "Đăng nhập", register: "Đăng ký", email: "Email", password: "Mật khẩu",
     invoice: "Hóa đơn", quote: "Báo giá", newInvoice: "Tạo hóa đơn", newQuote: "Tạo báo giá",
     totalInvoices: "Hóa đơn", paid: "Đã thanh toán", unpaid: "Chưa thanh toán", overdue: "Quá hạn", revenueTrend: "Doanh thu theo tháng",
@@ -89,7 +90,7 @@ export const dictionaries: Record<Language, Record<TranslationKey, string>> = {
   },
   ar: {
     appTagline: "فواتير أسترالية بلا تعقيدات محاسبية",
-    dashboard: "لوحة التحكم", documents: "المستندات", customers: "العملاء", settings: "الإعدادات", pricing: "الأسعار",
+    dashboard: "لوحة التحكم", documents: "المستندات", customers: "العملاء", expenses: "المصروفات", settings: "الإعدادات", pricing: "الأسعار",
     signOut: "تسجيل الخروج", signIn: "تسجيل الدخول", register: "إنشاء حساب", email: "البريد الإلكتروني", password: "كلمة المرور",
     invoice: "فاتورة", quote: "عرض سعر", newInvoice: "فاتورة جديدة", newQuote: "عرض سعر جديد",
     totalInvoices: "الفواتير", paid: "مدفوع", unpaid: "غير مدفوع", overdue: "متأخر", revenueTrend: "الإيرادات الشهرية",

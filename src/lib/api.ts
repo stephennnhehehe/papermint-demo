@@ -24,8 +24,11 @@ import type {
   CompanyProfile,
   Customer,
   DocumentRow,
+  Expense,
+  ExpenseReceipt,
   PaperDocument,
-  ProfileRow
+  ProfileRow,
+  ReminderSettings
 } from "./types";
 
 function shouldUseLocalStore(userId: string) {
@@ -105,6 +108,9 @@ export async function upsertCompanyProfile(
     address: company.address ?? null,
     logo_url: company.logo_url ?? null,
     is_default: Boolean(company.is_default),
+    gst_registered: company.gst_registered ?? true,
+    gst_accounting_basis: company.gst_accounting_basis ?? "cash",
+    bas_frequency: company.bas_frequency ?? "quarterly",
     updated_at: new Date().toISOString()
   };
   if (company.id) payload.id = company.id;
@@ -223,6 +229,7 @@ export async function saveDocument(userId: string, document: PaperDocument): Pro
     title: document.title,
     number: document.number,
     customer_id: document.customerId ?? null,
+    company_profile_id: document.companyProfileId ?? null,
     currency: document.currency,
     issue_date: document.issueDate,
     due_date: document.dueDate || null,
@@ -239,6 +246,8 @@ export async function saveDocument(userId: string, document: PaperDocument): Pro
     logo_url: document.logoUrl,
     totals,
     converted_from_quote_id: document.convertedFromQuoteId ?? null,
+    sent_at: document.sentAt ?? (document.status === "sent" ? new Date().toISOString() : null),
+    paid_at: document.status === "paid" ? document.paidAt ?? new Date().toISOString() : null,
     updated_at: new Date().toISOString()
   };
   if (document.id) payload.id = document.id;
@@ -256,5 +265,97 @@ export async function deleteDocument(userId: string, id: string) {
   }
   const supabase = getSupabaseClient();
   const { error } = await supabase.from("documents").delete().eq("id", id).eq("user_id", userId);
+  if (error) throw error;
+}
+
+export async function fetchExpenses(userId: string): Promise<Expense[]> {
+  if (shouldUseLocalStore(userId)) {
+    const { localFetchExpenses } = await import("./local-store");
+    return localFetchExpenses(userId);
+  }
+  const { data, error } = await getSupabaseClient()
+    .from("expenses")
+    .select("*")
+    .eq("user_id", userId)
+    .order("expense_date", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as Expense[];
+}
+
+export async function upsertExpense(
+  userId: string,
+  expense: Partial<Expense> & Pick<Expense, "merchant" | "expense_date" | "category" | "total_amount" | "gst_amount">
+): Promise<Expense> {
+  if (shouldUseLocalStore(userId)) {
+    const { localUpsertExpense } = await import("./local-store");
+    return localUpsertExpense(userId, expense);
+  }
+  const payload = {
+    ...(expense.id ? { id: expense.id } : {}),
+    user_id: userId,
+    company_profile_id: expense.company_profile_id ?? null,
+    merchant: expense.merchant,
+    expense_date: expense.expense_date,
+    category: expense.category,
+    purchase_type: expense.purchase_type ?? "non_capital",
+    total_amount: expense.total_amount,
+    gst_amount: expense.gst_amount,
+    gst_claimable: expense.gst_claimable ?? true,
+    payment_method: expense.payment_method ?? null,
+    notes: expense.notes ?? null,
+    updated_at: new Date().toISOString()
+  };
+  const { data, error } = await getSupabaseClient().from("expenses").upsert(payload).select("*").single();
+  if (error) throw error;
+  return data as Expense;
+}
+
+export async function deleteExpense(userId: string, id: string) {
+  if (shouldUseLocalStore(userId)) {
+    const { localDeleteExpense } = await import("./local-store");
+    localDeleteExpense(userId, id);
+    return;
+  }
+  const { error } = await getSupabaseClient().from("expenses").delete().eq("id", id).eq("user_id", userId);
+  if (error) throw error;
+}
+
+export async function fetchExpenseReceipts(userId: string): Promise<ExpenseReceipt[]> {
+  if (shouldUseLocalStore(userId)) {
+    const { localFetchExpenseReceipts } = await import("./local-store");
+    return localFetchExpenseReceipts(userId);
+  }
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase.from("expense_receipts").select("*").eq("user_id", userId);
+  if (error) throw error;
+  return Promise.all((data ?? []).map(async (receipt) => {
+    const { data: signed } = await supabase.storage.from("papermint-receipts").createSignedUrl(receipt.storage_path, 3600);
+    return { ...receipt, signed_url: signed?.signedUrl ?? null } as ExpenseReceipt;
+  }));
+}
+
+export async function fetchReminderSettings(userId: string): Promise<ReminderSettings> {
+  const fallback: ReminderSettings = {
+    user_id: userId,
+    enabled: false,
+    before_days: [3],
+    overdue_days: [3, 7, 14],
+    updated_at: new Date().toISOString()
+  };
+  if (shouldUseLocalStore(userId)) {
+    const { localFetchReminderSettings } = await import("./local-store");
+    return localFetchReminderSettings(userId);
+  }
+  const { data, error } = await getSupabaseClient().from("reminder_settings").select("*").eq("user_id", userId).maybeSingle();
+  if (error) throw error;
+  return (data as ReminderSettings | null) ?? fallback;
+}
+
+export async function saveReminderSettings(userId: string, settings: Pick<ReminderSettings, "enabled" | "before_days" | "overdue_days">) {
+  if (shouldUseLocalStore(userId)) {
+    const { localSaveReminderSettings } = await import("./local-store");
+    return localSaveReminderSettings(userId, settings);
+  }
+  const { error } = await getSupabaseClient().from("reminder_settings").upsert({ user_id: userId, ...settings, updated_at: new Date().toISOString() });
   if (error) throw error;
 }

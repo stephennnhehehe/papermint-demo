@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { pdf } from "@react-pdf/renderer";
-import { Check, ChevronDown, Copy, Download, FilePlus2, FileText, Loader2, LockKeyhole, Mail, Repeat2, Trash2, X } from "lucide-react";
+import { Check, ChevronDown, Copy, Download, FilePlus2, FileText, Link2, Loader2, LockKeyhole, Mail, Repeat2, Trash2, X } from "lucide-react";
 import { AppShell } from "@/components/app/AppShell";
 import { ProtectedRoute } from "@/components/app/ProtectedRoute";
 import { useAuth } from "@/components/app/AuthProvider";
@@ -14,6 +14,7 @@ import { PaperMintPdf } from "@/components/pdf/DocumentPdf";
 import { deleteDocument, fetchDocuments, saveDocument } from "@/lib/api";
 import { formatAud } from "@/lib/calculations";
 import { billingErrorMessage, isFreeDocumentLimitReached } from "@/lib/billing";
+import { shareDocument } from "@/lib/document-delivery";
 import { pickLanguage } from "@/lib/i18n";
 import { statusForDueDate } from "@/lib/documents";
 import { addDays, documentFromRow, generateDocumentNumber } from "@/lib/documents";
@@ -34,6 +35,7 @@ export default function DocumentsPage() {
   const [issuerFilter, setIssuerFilter] = useState("all");
   const [message, setMessage] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<DocumentRow | null>(null);
+  const [shareUrl, setShareUrl] = useState("");
   const [busyAction, setBusyAction] = useState("");
   const limitReached = isFreeDocumentLimitReached(billing);
 
@@ -204,37 +206,35 @@ export default function DocumentsPage() {
   }
 
   async function handleSend(row: DocumentRow) {
+    if (!user) return;
     setBusyAction(`send:${row.id}`);
     try {
-      const blob = await documentPdfBlob(row);
-      const file = new File([blob], `${row.type}-${row.number}.pdf`, {
-        type: "application/pdf"
-      });
-      const nav = navigator as Navigator & {
-        canShare?: (data: { files?: File[] }) => boolean;
-        share?: (data: { files?: File[]; title?: string; text?: string }) => Promise<void>;
-      };
-      const title = `${row.type.toUpperCase()} ${row.number}`;
-      const text = copy({ en: `Hi, please find ${title}.`, zh: `您好，请查收 ${title}。`, vi: `Xin chào, vui lòng xem ${title}.`, ar: `مرحباً، يرجى الاطلاع على ${title}.` });
-
-      if (nav.canShare?.({ files: [file] }) && nav.share) {
-        await nav.share({ files: [file], title, text });
-        showToast(copy({ en: "Share sheet opened.", zh: "分享面板已打开。", vi: "Đã mở bảng chia sẻ.", ar: "تم فتح لوحة المشاركة." }));
-        return;
-      }
-
-      const to = row.bill_to?.email ?? "";
-      const subject = encodeURIComponent(title);
-      const attachmentNote = copy({ en: "If you need a PDF attachment, use the download button and attach the file.", zh: "如果需要 PDF 附件，请先点击下载按钮后手动附加。", vi: "Để đính kèm PDF, hãy tải xuống rồi thêm tệp vào email.", ar: "لإرفاق ملف PDF، نزّله أولاً ثم أضفه إلى البريد." });
-      const body = encodeURIComponent(`${text}\n\n${attachmentNote}`);
-      window.location.href = `mailto:${to}?subject=${subject}&body=${body}`;
-      showToast(copy({ en: "Email app opened.", zh: "邮件应用已打开。", vi: "Đã mở ứng dụng email.", ar: "تم فتح تطبيق البريد." }));
+      const result = await shareDocument(user.id, row.id, true);
+      showToast(result.message || copy({ en: "Email sent.", zh: "邮件已发送。", vi: "Đã gửi email.", ar: "تم إرسال البريد." }));
+      await loadDocuments();
     } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") return;
       showToast(error instanceof Error ? error.message : "Unable to share document.", "error");
     } finally {
       setBusyAction("");
     }
+  }
+
+  async function handleCopyShareLink(row: DocumentRow) {
+    if (!user) return;
+    setBusyAction(`link:${row.id}`);
+    try {
+      const result = await shareDocument(user.id, row.id);
+      setShareUrl(result.url);
+      try {
+        await navigator.clipboard.writeText(result.url);
+        showToast(copy({ en: "Secure document link copied.", zh: "安全文档链接已复制。", vi: "Đã sao chép liên kết chứng từ.", ar: "تم نسخ رابط المستند الآمن." }));
+      } catch {
+        showToast(copy({ en: "Share link created. Copy it from the window.", zh: "分享链接已生成，请从弹窗中复制。", vi: "Đã tạo liên kết. Hãy sao chép từ cửa sổ.", ar: "تم إنشاء الرابط. انسخه من النافذة." }));
+      }
+      await loadDocuments();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Unable to copy document link.", "error");
+    } finally { setBusyAction(""); }
   }
 
   return (
@@ -322,10 +322,15 @@ export default function DocumentsPage() {
                 <tbody>
                   {visibleDocuments.map((row) => (
                     <tr className="border-b border-[#edf1ed]" key={row.id}>
-                      <td className="py-4 pr-3 font-black">
+                      <td className="py-4 pr-3">
                         <Link className="hover:text-[var(--mint-dark)]" href={`/documents/${row.id}`}>
-                          {row.number}
+                          <span className="font-black">{row.number}</span>
                         </Link>
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {row.sent_at ? <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-black text-blue-700">SENT</span> : null}
+                          {row.first_viewed_at ? <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-black text-amber-700">VIEWED</span> : null}
+                          {row.accepted_at ? <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-black text-emerald-700">ACCEPTED</span> : null}
+                        </div>
                       </td>
                       <td className="px-3 font-semibold text-[var(--muted)]">
                         {row.bill_to?.name || "-"}
@@ -349,6 +354,9 @@ export default function DocumentsPage() {
                           </button>
                           <button className="icon-btn" disabled={busyAction === `send:${row.id}`} onClick={() => handleSend(row)} title={copy({ en: "Send email", zh: "发送邮件", vi: "Gửi email", ar: "إرسال بريد" })} type="button">
                             {busyAction === `send:${row.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                          </button>
+                          <button className="icon-btn" disabled={busyAction === `link:${row.id}`} onClick={() => handleCopyShareLink(row)} title={copy({ en: "Copy secure link", zh: "复制安全链接", vi: "Sao chép liên kết", ar: "نسخ الرابط الآمن" })} type="button">
+                            {busyAction === `link:${row.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
                           </button>
                           {row.type === "quote" ? (
                             <button className="icon-btn" disabled={limitReached || busyAction === `convert:${row.id}`} onClick={() => handleConvert(row)} title={limitReached ? billingErrorMessage(new Error("FREE_WEEKLY_DOCUMENT_LIMIT_REACHED"), language) : t("convertToInvoice")} type="button">
@@ -406,6 +414,40 @@ export default function DocumentsPage() {
                   {busyAction === `delete:${deleteTarget.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                   {t("delete")}
                 </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {shareUrl ? (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-[#17211b]/45 p-4 backdrop-blur-sm"
+            onClick={() => setShareUrl("")}
+            role="presentation"
+          >
+            <div
+              aria-modal="true"
+              className="w-full max-w-lg rounded-lg border border-[var(--line)] bg-white p-5 shadow-2xl"
+              onClick={(event) => event.stopPropagation()}
+              role="dialog"
+            >
+              <div className="mb-4 flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-black tracking-normal">{copy({ en: "Secure document link", zh: "安全文档链接", vi: "Liên kết chứng từ an toàn", ar: "رابط المستند الآمن" })}</h2>
+                  <p className="mt-1 text-sm font-semibold text-[var(--muted)]">{copy({ en: "Anyone with this link can view the document.", zh: "获得此链接的人可以查看该文档。", vi: "Bất kỳ ai có liên kết đều có thể xem chứng từ.", ar: "يمكن لأي شخص لديه الرابط عرض المستند." })}</p>
+                </div>
+                <button className="icon-btn" onClick={() => setShareUrl("")} title={copy({ en: "Close", zh: "关闭", vi: "Đóng", ar: "إغلاق" })} type="button"><X className="h-4 w-4" /></button>
+              </div>
+              <input className="field font-mono text-xs" onFocus={(event) => event.currentTarget.select()} readOnly value={shareUrl} />
+              <div className="mt-5 flex flex-wrap justify-end gap-2">
+                <a className="btn-secondary" href={shareUrl} rel="noreferrer" target="_blank"><Link2 className="h-4 w-4" />{copy({ en: "Open link", zh: "打开链接", vi: "Mở liên kết", ar: "فتح الرابط" })}</a>
+                <button className="btn-primary" onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(shareUrl);
+                    showToast(copy({ en: "Link copied.", zh: "链接已复制。", vi: "Đã sao chép liên kết.", ar: "تم نسخ الرابط." }));
+                  } catch {
+                    showToast(copy({ en: "Select the link above and copy it manually.", zh: "请选择上方链接并手动复制。", vi: "Hãy chọn liên kết phía trên và sao chép thủ công.", ar: "حدد الرابط أعلاه وانسخه يدوياً." }), "error");
+                  }
+                }} type="button"><Copy className="h-4 w-4" />{copy({ en: "Copy link", zh: "复制链接", vi: "Sao chép", ar: "نسخ الرابط" })}</button>
               </div>
             </div>
           </div>

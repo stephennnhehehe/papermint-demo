@@ -2,17 +2,23 @@ import { Font } from "@react-pdf/renderer";
 
 let registered = false;
 
+function fontSource(fileName: string) {
+  return typeof window === "undefined"
+    ? `${process.cwd()}/public/fonts/${fileName}`
+    : `/fonts/${fileName}`;
+}
+
 export function registerPdfFonts() {
   if (registered) return;
   Font.register({
     family: "PaperMintSans",
     fonts: [
       {
-        src: "/fonts/NotoSansSC-Regular.ttf",
+        src: fontSource("NotoSansSC-Regular.ttf"),
         fontWeight: 400
       },
       {
-        src: "/fonts/NotoSansSC-Bold.ttf",
+        src: fontSource("NotoSansSC-Bold.ttf"),
         fontWeight: 700
       }
     ]
@@ -21,11 +27,11 @@ export function registerPdfFonts() {
     family: "PaperMintArabic",
     fonts: [
       {
-        src: "/fonts/NotoSansArabic-Regular.ttf",
+        src: fontSource("NotoSansArabic-Regular.ttf"),
         fontWeight: 400
       },
       {
-        src: "/fonts/NotoSansArabic-Bold.ttf",
+        src: fontSource("NotoSansArabic-Bold.ttf"),
         fontWeight: 700
       }
     ]

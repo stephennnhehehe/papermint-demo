@@ -59,6 +59,9 @@ export type CompanyRecord = {
   address: string | null;
   logo_url: string | null;
   is_default: boolean;
+  gst_registered: boolean;
+  gst_accounting_basis: "cash" | "accrual";
+  bas_frequency: "monthly" | "quarterly" | "annual";
   created_at: string;
   updated_at: string;
 };
@@ -92,6 +95,7 @@ export type PaperDocument = {
   title: string;
   number: string;
   customerId?: string | null;
+  companyProfileId?: string | null;
   currency: "AUD";
   issueDate: string;
   dueDate: string;
@@ -107,6 +111,12 @@ export type PaperDocument = {
   paymentMethods: string;
   logoUrl: string;
   convertedFromQuoteId?: string | null;
+  sentAt?: string | null;
+  firstViewedAt?: string | null;
+  acceptedAt?: string | null;
+  acceptedBy?: string | null;
+  convertedAt?: string | null;
+  paidAt?: string | null;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -129,6 +139,7 @@ export type DocumentRow = {
   title: string;
   number: string;
   customer_id: string | null;
+  company_profile_id: string | null;
   currency: "AUD";
   issue_date: string;
   due_date: string | null;
@@ -145,8 +156,74 @@ export type DocumentRow = {
   logo_url: string | null;
   totals: Totals;
   converted_from_quote_id: string | null;
+  sent_at: string | null;
+  first_viewed_at: string | null;
+  accepted_at: string | null;
+  accepted_by: string | null;
+  converted_at: string | null;
+  paid_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type ExpenseCategory =
+  | "materials"
+  | "fuel"
+  | "software"
+  | "phone"
+  | "marketing"
+  | "professional_services"
+  | "travel"
+  | "office"
+  | "other";
+
+export type Expense = {
+  id: string;
+  user_id: string;
+  company_profile_id: string | null;
+  merchant: string;
+  expense_date: string;
+  category: ExpenseCategory;
+  purchase_type: "capital" | "non_capital";
+  total_amount: number;
+  gst_amount: number;
+  gst_claimable: boolean;
+  payment_method: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ExpenseReceipt = {
+  id: string;
+  user_id: string;
+  expense_id: string;
+  storage_path: string;
+  file_name: string;
+  mime_type: string | null;
+  file_size: number | null;
+  created_at: string;
+  signed_url?: string | null;
+};
+
+export type ReminderSettings = {
+  user_id: string;
+  enabled: boolean;
+  before_days: number[];
+  overdue_days: number[];
+  updated_at: string;
+};
+
+export type BasSummary = {
+  periodStart: string;
+  periodEnd: string;
+  accountingBasis: "cash" | "accrual";
+  g1TotalSales: number;
+  g10CapitalPurchases: number;
+  g11NonCapitalPurchases: number;
+  gstOnSales1A: number;
+  gstOnPurchases1B: number;
+  netGst: number;
 };
 
 export type ProfileRow = {

@@ -10,6 +10,7 @@ import {
   Gauge,
   LogOut,
   Settings,
+  ReceiptText,
   Users,
 } from "lucide-react";
 import { useAuth } from "./AuthProvider";
@@ -24,6 +25,7 @@ const nav = [
   { href: "/dashboard", key: "dashboard", icon: BarChart3 },
   { href: "/documents", key: "documents", icon: FileText },
   { href: "/customers", key: "customers", icon: Users },
+  { href: "/expenses", key: "expenses", icon: ReceiptText },
   { href: "/settings", key: "settings", icon: Settings },
   { href: "/pricing", key: "pricing", icon: CreditCard }
 ] as const;
@@ -61,21 +63,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </span>
         </Link>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <nav className="flex flex-wrap gap-1 rounded-lg border border-[var(--line)] bg-[#f8faf7] p-1">
+        <div className="flex w-full flex-wrap items-center gap-2 md:w-auto md:justify-end">
+          <nav className="order-2 grid w-full grid-cols-3 gap-1 rounded-lg border border-[var(--line)] bg-[#f8faf7] p-1 md:order-none md:flex md:w-auto md:flex-wrap">
             {nav.map((item) => {
               const Icon = item.icon;
               const active = pathname.startsWith(item.href);
               return (
                 <Link
-                  className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-bold ${
+                  className={`inline-flex min-w-0 items-center justify-center gap-1 rounded-md px-1 py-2 text-xs font-bold sm:text-sm md:justify-start md:gap-2 md:px-3 ${
                     active ? "bg-white text-[var(--mint-dark)] shadow-sm" : "text-[var(--muted)]"
                   }`}
                   href={item.href}
                   key={item.href}
                 >
                   <Icon className="h-4 w-4" />
-                  <span>{t(item.key)}</span>
+                  <span className="truncate">{t(item.key)}</span>
                 </Link>
               );
             })}

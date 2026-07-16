@@ -19,7 +19,8 @@ export function DocumentPreview({
     valid: "Valid until", from: "From", bill: "Bill To", ship: "Ship To",
     desc: "Description", qty: "Qty", price: "Unit price", itemDiscount: "Discount",
     gstColumn: "GST", amount: "Amount", subtotal: "Subtotal", discount: "Order discount",
-    gst: "GST", total: "Total", notes: "Notes", payment: "Payment"
+    gst: "GST", total: "Total", notes: "Notes", payment: "Payment",
+    acceptedBy: "Accepted by / Authorised signature", signatureDate: "Date"
   };
   const orderDiscountLabel =
     document.orderDiscount.type === "percent" && document.orderDiscount.value > 0
@@ -31,7 +32,7 @@ export function DocumentPreview({
       <div className="flex flex-col justify-between gap-6 border-b border-[#dfe6df] pb-7 sm:flex-row sm:items-start">
         <div>
           <p className="text-sm font-black uppercase tracking-normal text-[var(--mint-dark)]">
-            {document.type === "invoice" ? labels.invoice : labels.quote}
+            {document.type === "invoice" ? (document.gstEnabled ? labels.invoice : "INVOICE") : labels.quote}
           </p>
           <h2 className="mt-2 break-words text-3xl font-black tracking-normal">
             {document.number || "DRAFT"}
@@ -114,6 +115,16 @@ export function DocumentPreview({
         <div className="mt-2 flex items-center justify-between rounded-lg bg-[#17211b] px-4 py-3 text-white">
           <span className="font-black">{labels.total}</span>
           <span className="text-xl font-black tracking-normal">{formatAud(totals.total)}</span>
+        </div>
+        <div className="mt-5 grid grid-cols-[1fr_96px] gap-5 text-[11px] text-[#66736b]">
+          <div>
+            <div className="h-7 border-b border-[#9aa59d]" />
+            <span>{labels.acceptedBy}</span>
+          </div>
+          <div>
+            <div className="h-7 border-b border-[#9aa59d]" />
+            <span>{labels.signatureDate}</span>
+          </div>
         </div>
       </div>
 
