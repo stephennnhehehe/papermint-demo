@@ -10,6 +10,7 @@ type AuthContextValue = {
   configured: boolean;
   demo: boolean;
   startDemo: () => void;
+  completeSignIn: (user: AuthUser) => void;
   signOut: () => Promise<void>;
 };
 
@@ -76,6 +77,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(false);
   }, []);
 
+  const completeSignIn = useCallback((authenticatedUser: AuthUser) => {
+    window.localStorage.removeItem(demoSessionKey);
+    window.localStorage.removeItem(legacyDemoKey);
+    setDemo(false);
+    setUser(authenticatedUser);
+    setLoading(false);
+  }, []);
+
   const signOut = useCallback(async () => {
     window.localStorage.removeItem(demoSessionKey);
     window.localStorage.removeItem(legacyDemoKey);
@@ -91,8 +100,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [configured]);
 
   const value = useMemo(
-    () => ({ user, loading, configured, demo, startDemo, signOut }),
-    [configured, demo, loading, signOut, startDemo, user]
+    () => ({ user, loading, configured, demo, startDemo, completeSignIn, signOut }),
+    [completeSignIn, configured, demo, loading, signOut, startDemo, user]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

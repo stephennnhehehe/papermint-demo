@@ -37,7 +37,7 @@ export default function LoginPage() {
 function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { configured, startDemo, user } = useAuth();
+  const { completeSignIn, configured, startDemo, user } = useAuth();
   const { t, language } = useLanguage();
   const copy = <T,>(values: { en: T; zh?: T; vi?: T; ar?: T }) => pickLanguage(language, values);
   const [mode, setMode] = useState<"signin" | "signup">(
@@ -85,6 +85,7 @@ function LoginContent() {
           copy({ en: "Account created. Open the confirmation link in your inbox to finish signing up.", zh: "账号已创建。请打开邮箱中的确认链接完成注册。", vi: "Tài khoản đã được tạo. Hãy mở liên kết xác nhận trong email.", ar: "تم إنشاء الحساب. افتح رابط التأكيد في بريدك لإكمال التسجيل." })
         );
       } else {
+        if (result.data.user) completeSignIn(result.data.user);
         router.replace(destination);
       }
     } catch (error) {
