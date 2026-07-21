@@ -19,7 +19,7 @@ export function DocumentPreview({
     valid: "Valid until", from: "From", bill: "Bill To", ship: "Ship To",
     desc: "Description", qty: "Qty", price: "Unit price", itemDiscount: "Discount",
     gstColumn: "GST", amount: "Amount", subtotal: "Subtotal", discount: "Order discount",
-    gst: "GST", total: "Total", notes: "Notes", payment: "Payment",
+    itemDiscountTotal: "Item discounts", returns: "Returns", gst: "GST", total: "Total", notes: "Notes", payment: "Payment",
     acceptedBy: "Accepted by / Authorised signature", signatureDate: "Date"
   };
   const orderDiscountLabel =
@@ -101,7 +101,13 @@ export function DocumentPreview({
       </div>
 
       <div className="ml-auto grid w-full max-w-sm gap-1.5 text-xs">
-        <AmountRow label={labels.subtotal} value={formatAud(totals.subtotal)} />
+        <AmountRow label={labels.subtotal} value={formatAud(totals.subtotalBeforeDiscount)} />
+        {totals.lineDiscountTotal > 0 ? (
+          <AmountRow label={labels.itemDiscountTotal} value={`-${formatAud(totals.lineDiscountTotal)}`} />
+        ) : null}
+        {totals.returnsTotal > 0 ? (
+          <AmountRow label={labels.returns} value={`-${formatAud(totals.returnsTotal)}`} />
+        ) : null}
         {totals.orderDiscountTotal > 0 ? (
           <AmountRow label={orderDiscountLabel} value={`-${formatAud(totals.orderDiscountTotal)}`} />
         ) : null}

@@ -26,6 +26,7 @@ describe("invoice calculations", () => {
 
     expect(totals.subtotalBeforeDiscount).toBe(200);
     expect(totals.lineDiscountTotal).toBe(20);
+    expect(totals.returnsTotal).toBe(0);
     expect(totals.subtotal).toBe(180);
     expect(totals.orderDiscountTotal).toBe(30);
     expect(totals.gst).toBe(15);
@@ -90,10 +91,49 @@ describe("invoice calculations", () => {
       10
     );
 
+    expect(totals.subtotalBeforeDiscount).toBe(200);
+    expect(totals.lineDiscountTotal).toBe(0);
+    expect(totals.returnsTotal).toBe(30);
     expect(totals.subtotal).toBe(170);
     expect(totals.taxableAmount).toBe(170);
     expect(totals.gst).toBe(17);
     expect(totals.total).toBe(187);
+  });
+
+  it("separates item discounts, returns and order discounts in the total breakdown", () => {
+    const totals = calculateTotals(
+      [
+        {
+          id: "sale",
+          description: "Sale",
+          details: "",
+          quantity: 2,
+          unitPrice: 100,
+          gstEnabled: true,
+          discount: { type: "percent", value: 10 }
+        },
+        {
+          id: "return",
+          description: "Return",
+          details: "",
+          quantity: 1,
+          unitPrice: -20,
+          gstEnabled: true,
+          discount: { type: "percent", value: 0 }
+        }
+      ],
+      { type: "fixed", value: 30 },
+      true,
+      10
+    );
+
+    expect(totals.subtotalBeforeDiscount).toBe(200);
+    expect(totals.lineDiscountTotal).toBe(20);
+    expect(totals.returnsTotal).toBe(20);
+    expect(totals.subtotal).toBe(160);
+    expect(totals.orderDiscountTotal).toBe(30);
+    expect(totals.gst).toBe(13);
+    expect(totals.total).toBe(143);
   });
 });
 

@@ -224,7 +224,7 @@ export function PaperMintPdf({
     valid: "Valid until", from: "From", bill: "Bill To", ship: "Ship To",
     desc: "Description", qty: "Qty", price: "Unit price", itemDiscount: "Discount",
     gstColumn: "GST", amount: "Amount", subtotal: "Subtotal", discount: "Order discount",
-    gst: "GST", total: "Total", payment: "Payment", notes: "Notes",
+    itemDiscountTotal: "Item discounts", returns: "Returns", gst: "GST", total: "Total", payment: "Payment", notes: "Notes",
     acceptedBy: "Accepted by / Authorised signature", signatureDate: "Date"
   };
   const orderDiscountLabel =
@@ -291,7 +291,13 @@ export function PaperMintPdf({
 
         <View wrap={false}>
           <View style={styles.totals}>
-            <PdfAmount label={labels.subtotal} value={formatAud(totals.subtotal)} />
+            <PdfAmount label={labels.subtotal} value={formatAud(totals.subtotalBeforeDiscount)} />
+            {totals.lineDiscountTotal > 0 ? (
+              <PdfAmount label={labels.itemDiscountTotal} value={`-${formatAud(totals.lineDiscountTotal)}`} />
+            ) : null}
+            {totals.returnsTotal > 0 ? (
+              <PdfAmount label={labels.returns} value={`-${formatAud(totals.returnsTotal)}`} />
+            ) : null}
             {totals.orderDiscountTotal > 0 ? (
               <PdfAmount label={orderDiscountLabel} value={`-${formatAud(totals.orderDiscountTotal)}`} />
             ) : null}

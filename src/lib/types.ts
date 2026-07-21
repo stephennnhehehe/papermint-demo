@@ -124,6 +124,7 @@ export type PaperDocument = {
 export type Totals = {
   subtotalBeforeDiscount: number;
   lineDiscountTotal: number;
+  returnsTotal: number;
   subtotal: number;
   orderDiscountTotal: number;
   taxableAmount: number;

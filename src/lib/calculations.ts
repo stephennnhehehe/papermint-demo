@@ -52,11 +52,15 @@ export function calculateTotals(
   gstRate = 10
 ): Totals {
   const subtotalBeforeDiscount = clampMoney(
-    items.reduce((sum, item) => sum + lineSubtotalBeforeDiscount(item), 0)
+    items.reduce((sum, item) => sum + Math.max(0, lineSubtotalBeforeDiscount(item)), 0)
+  );
+  const positiveSubtotalAfterDiscount = positiveLineSubtotal(items);
+  const returnsTotal = clampMoney(
+    Math.abs(items.reduce((sum, item) => sum + Math.min(0, lineTotal(item)), 0))
   );
   const subtotal = clampMoney(items.reduce((sum, item) => sum + lineTotal(item), 0));
-  const lineDiscountTotal = clampMoney(subtotalBeforeDiscount - subtotal);
-  const discountableSubtotal = positiveLineSubtotal(items);
+  const lineDiscountTotal = clampMoney(subtotalBeforeDiscount - positiveSubtotalAfterDiscount);
+  const discountableSubtotal = positiveSubtotalAfterDiscount;
   const orderDiscountTotal = discountAmount(discountableSubtotal, orderDiscount);
   const taxableAmount = clampMoney(
     items
@@ -75,6 +79,7 @@ export function calculateTotals(
   return {
     subtotalBeforeDiscount,
     lineDiscountTotal,
+    returnsTotal,
     subtotal,
     orderDiscountTotal,
     taxableAmount,

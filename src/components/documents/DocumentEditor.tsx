@@ -677,8 +677,25 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
                   </label>
                   <Field label="GST %" step="1" type="number" value={String(paper.gstRate)} onChange={(value) => updatePaper({ gstRate: Number(value) || 0 })} />
                   <div className="mt-2 grid gap-2 border-t border-[var(--line)] pt-3 text-sm">
-                    <Amount label={t("subtotal")} value={formatAud(totals.subtotal)} />
-                    <Amount label={t("discount")} value={`-${formatAud(totals.orderDiscountTotal)}`} />
+                    <Amount label={t("subtotal")} value={formatAud(totals.subtotalBeforeDiscount)} />
+                    {totals.lineDiscountTotal > 0 ? (
+                      <Amount
+                        label={copy({ en: "Item discounts", zh: "项目折扣", vi: "Chiết khấu mặt hàng", ar: "خصومات البنود" })}
+                        value={`-${formatAud(totals.lineDiscountTotal)}`}
+                      />
+                    ) : null}
+                    {totals.returnsTotal > 0 ? (
+                      <Amount
+                        label={copy({ en: "Returns", zh: "退货", vi: "Hàng trả lại", ar: "المرتجعات" })}
+                        value={`-${formatAud(totals.returnsTotal)}`}
+                      />
+                    ) : null}
+                    {totals.orderDiscountTotal > 0 ? (
+                      <Amount
+                        label={copy({ en: "Order discount", zh: "整单折扣", vi: "Chiết khấu đơn hàng", ar: "خصم الطلب" })}
+                        value={`-${formatAud(totals.orderDiscountTotal)}`}
+                      />
+                    ) : null}
                     <Amount label={t("gst")} value={formatAud(totals.gst)} />
                     <Amount label={t("total")} strong value={formatAud(totals.total)} />
                   </div>
