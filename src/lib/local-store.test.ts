@@ -3,7 +3,7 @@ import { createEmptyDocument, defaultCompanyProfile } from "./documents";
 import {
   localDeleteDocument, localFetchPaymentAccounts, localFetchVehicleTrips,
   localFetchVehicles, localSaveDocument, localUpsertPaymentAccount,
-  localUpsertVehicle, localUpsertVehicleTrip
+  localUpdateDocumentStatus, localUpsertVehicle, localUpsertVehicleTrip
 } from "./local-store";
 
 function memoryStorage(): Storage {
@@ -53,6 +53,17 @@ describe("local demo document allowance", () => {
       "FREE_WEEKLY_DOCUMENT_LIMIT_REACHED"
     );
   });
+
+  it("persists a list-page status change and paid timestamp", () => {
+    const saved = localSaveDocument("demo-user", {
+      ...createEmptyDocument("invoice", defaultCompanyProfile),
+      status: "sent"
+    });
+    const updated = localUpdateDocumentStatus("demo-user", saved.id!, "paid");
+
+    expect(updated.status).toBe("paid");
+    expect(updated.paid_at).toBeTruthy();
+  });
 });
 
 describe("local bookkeeping records", () => {
@@ -87,13 +98,14 @@ describe("local bookkeeping records", () => {
       purpose: "Delivery",
       start_odometer: 1000,
       end_odometer: 1042.5,
-      is_business: true
+      is_business: true,
+      business_use_percent: 60
     });
 
     expect(localFetchVehicles("demo-user")).toMatchObject([{ name: "Delivery van", registration: "ABC123" }]);
     expect(localFetchVehicleTrips("demo-user")).toMatchObject([{
       origin: "Warehouse", destination: "Customer", purpose: "Delivery",
-      start_odometer: 1000, end_odometer: 1042.5, is_business: true
+      start_odometer: 1000, end_odometer: 1042.5, is_business: true, business_use_percent: 60
     }]);
   });
 });

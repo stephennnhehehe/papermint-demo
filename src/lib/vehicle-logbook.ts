@@ -4,6 +4,13 @@ export function tripKilometres(trip: Pick<VehicleTrip, "start_odometer" | "end_o
   return Math.max(0, Math.round((Number(trip.end_odometer) - Number(trip.start_odometer)) * 10) / 10);
 }
 
+export function tripBusinessKilometres(
+  trip: Pick<VehicleTrip, "start_odometer" | "end_odometer" | "business_use_percent">
+) {
+  const percentage = Math.min(100, Math.max(0, Number(trip.business_use_percent ?? 100)));
+  return Math.round(tripKilometres(trip) * percentage) / 100;
+}
+
 export function logbookPeriodDays(vehicle: Pick<Vehicle, "logbook_start_date" | "logbook_end_date">) {
   if (!vehicle.logbook_start_date || !vehicle.logbook_end_date) return 0;
   const start = new Date(`${vehicle.logbook_start_date}T00:00:00Z`).getTime();
@@ -15,9 +22,7 @@ export function logbookPeriodDays(vehicle: Pick<Vehicle, "logbook_start_date" | 
 export function vehicleLogbookSummary(vehicle: Vehicle, trips: VehicleTrip[]) {
   const vehicleTrips = trips.filter((trip) => trip.vehicle_id === vehicle.id);
   const totalKilometres = vehicleTrips.reduce((sum, trip) => sum + tripKilometres(trip), 0);
-  const businessKilometres = vehicleTrips
-    .filter((trip) => trip.is_business)
-    .reduce((sum, trip) => sum + tripKilometres(trip), 0);
+  const businessKilometres = vehicleTrips.reduce((sum, trip) => sum + tripBusinessKilometres(trip), 0);
   const periodDays = logbookPeriodDays(vehicle);
   return {
     tripCount: vehicleTrips.length,

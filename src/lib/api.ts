@@ -25,6 +25,7 @@ import type {
   CompanyProfile,
   Customer,
   DocumentRow,
+  DocumentStatus,
   Expense,
   ExpenseReceipt,
   PaymentAccount,
@@ -273,6 +274,28 @@ export async function deleteDocument(userId: string, id: string) {
   if (error) throw error;
 }
 
+export async function updateDocumentStatus(
+  userId: string,
+  id: string,
+  status: DocumentStatus
+): Promise<DocumentRow> {
+  if (shouldUseLocalStore(userId)) {
+    const { localUpdateDocumentStatus } = await import("./local-store");
+    return localUpdateDocumentStatus(userId, id, status);
+  }
+  const timestamp = new Date().toISOString();
+  const payload: Record<string, unknown> = {
+    status,
+    paid_at: status === "paid" ? timestamp : null,
+    updated_at: timestamp
+  };
+  if (status === "sent") payload.sent_at = timestamp;
+  const { data, error } = await getSupabaseClient().from("documents").update(payload)
+    .eq("id", id).eq("user_id", userId).select("*").single();
+  if (error) throw error;
+  return data as DocumentRow;
+}
+
 export async function fetchExpenses(userId: string): Promise<Expense[]> {
   if (shouldUseLocalStore(userId)) {
     const { localFetchExpenses } = await import("./local-store");
@@ -482,7 +505,8 @@ export async function upsertVehicleTrip(
     purpose: trip.purpose,
     start_odometer: trip.start_odometer,
     end_odometer: trip.end_odometer,
-    is_business: trip.is_business ?? true,
+    is_business: Number(trip.business_use_percent ?? 100) > 0,
+    business_use_percent: trip.business_use_percent ?? 100,
     driver: trip.driver ?? null,
     notes: trip.notes ?? null,
     updated_at: new Date().toISOString()

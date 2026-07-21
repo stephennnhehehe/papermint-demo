@@ -12,7 +12,7 @@ import { useBilling } from "@/components/app/BillingProvider";
 import { useLanguage } from "@/components/app/LanguageProvider";
 import { useToast } from "@/components/app/ToastProvider";
 import { PaperMintPdf } from "@/components/pdf/DocumentPdf";
-import { deleteDocument, fetchDocuments, saveDocument } from "@/lib/api";
+import { deleteDocument, fetchDocuments, saveDocument, updateDocumentStatus } from "@/lib/api";
 import { formatAud } from "@/lib/calculations";
 import { billingErrorMessage, isFreeDocumentLimitReached } from "@/lib/billing";
 import { shareDocument } from "@/lib/document-delivery";
@@ -172,9 +172,23 @@ export default function DocumentsPage() {
     if (!user) return;
     setBusyAction(`status:${row.id}`);
     try {
-      const source = documentFromRow(row);
-      await saveDocument(user.id, { ...source, status });
-      await loadDocuments();
+      const updated = await updateDocumentStatus(user.id, row.id, status);
+      setDocuments((current) => current.map((document) => document.id === row.id ? updated : document));
+      const draftKey = `papermint:draft:${user.id}:edit:${row.id}`;
+      const savedDraft = window.localStorage.getItem(draftKey);
+      if (savedDraft) {
+        try {
+          const draft = JSON.parse(savedDraft) as ReturnType<typeof documentFromRow>;
+          window.localStorage.setItem(draftKey, JSON.stringify({
+            ...draft,
+            status,
+            sentAt: status === "sent" ? draft.sentAt ?? updated.sent_at : draft.sentAt,
+            paidAt: status === "paid" ? updated.paid_at : null
+          }));
+        } catch {
+          window.localStorage.removeItem(draftKey);
+        }
+      }
       showToast(pickLanguage(language, { en: `Status changed to ${status}.`, zh: `状态已改为 ${status}。`, vi: `Đã đổi trạng thái thành ${status}.`, ar: `تم تغيير الحالة إلى ${status}.` }));
     } catch (error) {
       showToast(error instanceof Error ? error.message : "Unable to update status.", "error");

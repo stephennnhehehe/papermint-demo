@@ -8,6 +8,7 @@ import type {
   CompanyProfile,
   Customer,
   DocumentRow,
+  DocumentStatus,
   Expense,
   ExpenseReceipt,
   PaymentAccount,
@@ -234,6 +235,26 @@ export function localDeleteDocument(userId: string, id: string) {
   );
 }
 
+export function localUpdateDocumentStatus(
+  userId: string,
+  id: string,
+  status: DocumentStatus
+): DocumentRow {
+  const documents = localFetchDocuments(userId);
+  const existing = documents.find((document) => document.id === id);
+  if (!existing) throw new Error("Document not found.");
+  const timestamp = now();
+  const updated: DocumentRow = {
+    ...existing,
+    status,
+    sent_at: status === "sent" ? existing.sent_at ?? timestamp : existing.sent_at,
+    paid_at: status === "paid" ? timestamp : null,
+    updated_at: timestamp
+  };
+  writeJson(`documents:${userId}`, [updated, ...documents.filter((document) => document.id !== id)]);
+  return updated;
+}
+
 export function localFetchExpenses(userId: string): Expense[] {
   return readJson<Expense[]>(`expenses:${userId}`, []).map((expense) => ({
     ...expense,
@@ -383,7 +404,10 @@ export function localDeleteVehicle(userId: string, id: string) {
 }
 
 export function localFetchVehicleTrips(userId: string): VehicleTrip[] {
-  return readJson<VehicleTrip[]>(`vehicle-trips:${userId}`, []).sort((a, b) =>
+  return readJson<VehicleTrip[]>(`vehicle-trips:${userId}`, []).map((trip) => ({
+    ...trip,
+    business_use_percent: trip.business_use_percent ?? (trip.is_business ? 100 : 0)
+  })).sort((a, b) =>
     b.start_date.localeCompare(a.start_date) || b.created_at.localeCompare(a.created_at)
   );
 }
@@ -406,7 +430,8 @@ export function localUpsertVehicleTrip(
     purpose: trip.purpose,
     start_odometer: Number(trip.start_odometer),
     end_odometer: Number(trip.end_odometer),
-    is_business: trip.is_business ?? true,
+    is_business: Number(trip.business_use_percent ?? 100) > 0,
+    business_use_percent: Math.min(100, Math.max(0, Number(trip.business_use_percent ?? 100))),
     driver: trip.driver ?? null,
     notes: trip.notes ?? null,
     created_at: existing?.created_at ?? now(),

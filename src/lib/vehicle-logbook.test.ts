@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Vehicle, VehicleTrip } from "./types";
-import { logbookPeriodDays, tripKilometres, vehicleLogbookSummary } from "./vehicle-logbook";
+import { logbookPeriodDays, tripBusinessKilometres, tripKilometres, vehicleLogbookSummary } from "./vehicle-logbook";
 
 const vehicle = {
   id: "vehicle",
@@ -20,10 +20,14 @@ describe("vehicle logbook calculations", () => {
     expect(logbookPeriodDays(vehicle)).toBe(84);
   });
 
+  it("allocates journey kilometres using the business percentage", () => {
+    expect(tripBusinessKilometres({ start_odometer: 100, end_odometer: 150, business_use_percent: 60 })).toBe(30);
+  });
+
   it("calculates business use from all recorded travel", () => {
     const trips = [
-      { vehicle_id: "vehicle", start_odometer: 1000, end_odometer: 1100, is_business: true },
-      { vehicle_id: "vehicle", start_odometer: 1100, end_odometer: 1150, is_business: false }
+      { vehicle_id: "vehicle", start_odometer: 1000, end_odometer: 1100, business_use_percent: 75 },
+      { vehicle_id: "vehicle", start_odometer: 1100, end_odometer: 1150, business_use_percent: 50 }
     ] as VehicleTrip[];
     expect(vehicleLogbookSummary(vehicle, trips)).toMatchObject({
       tripCount: 2,

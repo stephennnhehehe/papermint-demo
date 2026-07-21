@@ -260,6 +260,7 @@ export type VehicleTrip = {
   start_odometer: number;
   end_odometer: number;
   is_business: boolean;
+  business_use_percent: number;
   driver: string | null;
   notes: string | null;
   created_at: string;
