@@ -1,9 +1,9 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Check, Copy, Download, Eye, EyeOff, Loader2, LockKeyhole, Plus, Printer, Save, Trash2, Upload } from "lucide-react";
+import { Check, Copy, Download, Eye, EyeOff, ListPlus, Loader2, LockKeyhole, Plus, Printer, Save, Trash2, Upload } from "lucide-react";
 import { pdf } from "@react-pdf/renderer";
 import { AppShell } from "@/components/app/AppShell";
 import { ProtectedRoute } from "@/components/app/ProtectedRoute";
@@ -14,6 +14,7 @@ import { useToast } from "@/components/app/ToastProvider";
 import { calculateTotals, formatAud, lineTotal } from "@/lib/calculations";
 import { billingErrorMessage, isFreeDocumentLimitReached } from "@/lib/billing";
 import { pickLanguage, type Language } from "@/lib/i18n";
+import { cleanDecimalInput, decimalValue, parseQuickLineItems } from "@/lib/line-items";
 import {
   createEmptyDocument,
   createLineItem,
@@ -129,6 +130,7 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
   const [autoSavedAt, setAutoSavedAt] = useState("");
   const [showPreview, setShowPreview] = useState(false);
   const [selectedCompanyProfileId, setSelectedCompanyProfileId] = useState("");
+  const [quickItemsText, setQuickItemsText] = useState("");
   const limitReached = isFreeDocumentLimitReached(billing);
 
   const draftKey = useMemo(() => {
@@ -257,6 +259,32 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
         lineItems: current.lineItems.map((item) => (item.id === id ? { ...item, ...patch } : item))
       };
     });
+  }
+
+  function setAllItemGst(gstEnabled: boolean) {
+    setPaper((current) => current ? {
+      ...current,
+      lineItems: current.lineItems.map((item) => ({ ...item, gstEnabled }))
+    } : current);
+  }
+
+  function handleQuickFill() {
+    const parsed = parseQuickLineItems(quickItemsText);
+    if (!parsed.length) {
+      showToast(copy({ en: "Enter at least one valid item row.", zh: "请至少输入一行有效项目。", vi: "Nhập ít nhất một dòng hợp lệ.", ar: "أدخل بنداً صالحاً واحداً على الأقل." }), "error");
+      return;
+    }
+    const imported = parsed.map((item) => ({ ...item, id: crypto.randomUUID() }));
+    setPaper((current) => {
+      if (!current) return current;
+      const onlyBlankItem = current.lineItems.length === 1 &&
+        !current.lineItems[0].description &&
+        !current.lineItems[0].details &&
+        current.lineItems[0].unitPrice === 0;
+      return { ...current, lineItems: onlyBlankItem ? imported : [...current.lineItems, ...imported] };
+    });
+    setQuickItemsText("");
+    showToast(copy({ en: `${imported.length} items added.`, zh: `已添加 ${imported.length} 个项目。`, vi: `Đã thêm ${imported.length} hạng mục.`, ar: `تمت إضافة ${imported.length} بنداً.` }));
   }
 
   function handleCustomerSelect(customerId: string) {
@@ -565,15 +593,43 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
               </section>
 
               <section className="panel p-5 xl:col-start-1">
-                <div className="mb-4 flex items-center justify-between gap-3">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                   <h2 className="text-xl font-black tracking-normal">{t("lineItems")}</h2>
-                  <button className="btn-secondary px-3 py-2 text-sm" onClick={() => updatePaper({ lineItems: [...paper.lineItems, createLineItem()] })} type="button">
-                    <Plus className="h-4 w-4" />
-                    {copy({ en: "Add item", zh: "添加项目", vi: "Thêm hạng mục", ar: "إضافة بند" })}
-                  </button>
+                  <div className="flex flex-wrap gap-2">
+                    <button className="btn-secondary px-3 py-2 text-xs" onClick={() => setAllItemGst(true)} type="button">
+                      <Check className="h-3.5 w-3.5" />
+                      {copy({ en: "Select all GST", zh: "全选 GST", vi: "Chọn tất cả GST", ar: "تحديد GST للكل" })}
+                    </button>
+                    <button className="btn-secondary px-3 py-2 text-xs" onClick={() => setAllItemGst(false)} type="button">
+                      {copy({ en: "Clear all GST", zh: "取消全部 GST", vi: "Bỏ tất cả GST", ar: "إلغاء GST للكل" })}
+                    </button>
+                    <button className="btn-secondary px-3 py-2 text-xs" onClick={() => updatePaper({ lineItems: [...paper.lineItems, createLineItem()] })} type="button">
+                      <Plus className="h-3.5 w-3.5" />
+                      {copy({ en: "Add item", zh: "添加项目", vi: "Thêm hạng mục", ar: "إضافة بند" })}
+                    </button>
+                  </div>
                 </div>
 
-                <div className="grid gap-3">
+                <div className="mb-3 rounded-lg border border-dashed border-[var(--line)] bg-[#f8faf7] p-3">
+                  <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-black">{copy({ en: "Quick fill items", zh: "文本快速填入项目", vi: "Điền nhanh hạng mục", ar: "إدخال البنود سريعاً" })}</p>
+                      <p className="text-xs font-semibold text-[var(--muted)]">{copy({ en: "One row per item: Description | Details | Qty | Unit price | GST", zh: "每行一个项目：描述 | 明细 | 数量 | 单价 | GST", vi: "Mỗi dòng: Mô tả | Chi tiết | SL | Đơn giá | GST", ar: "كل سطر: الوصف | التفاصيل | الكمية | السعر | GST" })}</p>
+                    </div>
+                    <button className="btn-secondary px-3 py-2 text-xs" disabled={!quickItemsText.trim()} onClick={handleQuickFill} type="button">
+                      <ListPlus className="h-3.5 w-3.5" />
+                      {copy({ en: "Fill items", zh: "自动填入", vi: "Điền hạng mục", ar: "تعبئة البنود" })}
+                    </button>
+                  </div>
+                  <textarea
+                    className="field min-h-16 resize-y py-2 text-sm"
+                    onChange={(event) => setQuickItemsText(event.target.value)}
+                    placeholder={copy({ en: "Apples | Red carton | 2.5 | 12.345 | GST\nReturned crate | Damaged | 1 | -8.50 | GST", zh: "苹果 | 红色纸箱 | 2.5 | 12.345 | GST\n退货纸箱 | 破损 | 1 | -8.50 | GST", vi: "Táo | Thùng đỏ | 2.5 | 12.345 | GST", ar: "تفاح | صندوق أحمر | 2.5 | 12.345 | GST" })}
+                    value={quickItemsText}
+                  />
+                </div>
+
+                <div className="grid gap-2">
                   {paper.lineItems.map((item, index) => (
                     <LineItemEditor
                       canDelete={paper.lineItems.length > 1}
@@ -764,25 +820,41 @@ function LineItemEditor({
 }) {
   const copy = <T,>(values: { en: T; zh?: T; vi?: T; ar?: T }) => pickLanguage(language, values);
   return (
-    <article className="rounded-lg border border-[var(--line)] bg-white/75 p-4">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <h3 className="text-sm font-black text-[var(--muted)]">
-          {copy({ en: "Item", zh: "项目", vi: "Hạng mục", ar: "البند" })} #{index + 1}
-        </h3>
-        <button className="icon-btn text-[var(--rose)]" disabled={!canDelete} onClick={onDelete} title="Delete item" type="button">
-          <Trash2 className="h-4 w-4" />
-        </button>
-      </div>
-      <div className="grid gap-3 lg:grid-cols-[1fr_82px_120px_105px_170px_120px]">
-        <div className="grid gap-3">
-          <Field label={copy({ en: "Description", zh: "描述", vi: "Mô tả", ar: "الوصف" })} value={item.description} onChange={(value) => onChange({ description: value })} />
-          <TextArea label={copy({ en: "Details", zh: "明细", vi: "Chi tiết", ar: "التفاصيل" })} value={item.details} onChange={(value) => onChange({ details: value })} />
+    <article className="rounded-lg border border-[var(--line)] bg-white/75 p-3">
+      <div className="mb-2 flex items-center gap-2">
+        <span className="shrink-0 rounded-md bg-[#eef4ef] px-2 py-1 text-[11px] font-black text-[var(--muted)]">
+          #{index + 1}
+        </span>
+        <div className="grid min-w-0 flex-1 gap-2 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.2fr)]">
+          <AutoGrowTextArea
+            label={copy({ en: "Description", zh: "描述", vi: "Mô tả", ar: "الوصف" })}
+            maxHeight={112}
+            onChange={(value) => onChange({ description: value })}
+            value={item.description}
+          />
+          <AutoGrowTextArea
+            label={copy({ en: "Details", zh: "明细", vi: "Chi tiết", ar: "التفاصيل" })}
+            maxHeight={144}
+            onChange={(value) => onChange({ details: value })}
+            value={item.details}
+          />
         </div>
-        <Field label={copy({ en: "Qty", zh: "数量", vi: "Số lượng", ar: "الكمية" })} step="1" type="number" value={String(item.quantity)} onChange={(value) => onChange({ quantity: Number(value) || 0 })} />
-        <Field label={copy({ en: "Unit price", zh: "单价", vi: "Đơn giá", ar: "سعر الوحدة" })} step="1" type="number" value={String(item.unitPrice)} onChange={(value) => onChange({ unitPrice: Number(value) || 0 })} />
+      </div>
+      <div className="grid grid-cols-2 items-end gap-2 sm:grid-cols-3 lg:grid-cols-[86px_120px_105px_minmax(170px,1fr)_120px_38px]">
+        <DecimalInput
+          label={copy({ en: "Qty", zh: "数量", vi: "Số lượng", ar: "الكمية" })}
+          onChange={(quantity) => onChange({ quantity })}
+          value={item.quantity}
+        />
+        <DecimalInput
+          allowNegative
+          label={copy({ en: "Unit price", zh: "单价", vi: "Đơn giá", ar: "سعر الوحدة" })}
+          onChange={(unitPrice) => onChange({ unitPrice })}
+          value={item.unitPrice}
+        />
         <label>
           <span className="label">GST</span>
-          <span className="field flex items-center justify-between gap-3">
+          <span className="field flex items-center justify-between gap-2 px-2 py-2">
             <span>{item.gstEnabled === false ? copy({ en: "No GST", zh: "无 GST", vi: "Không GST", ar: "بدون GST" }) : "GST"}</span>
             <input
               className="h-4 w-4 accent-[var(--mint-dark)]"
@@ -792,26 +864,122 @@ function LineItemEditor({
             />
           </span>
         </label>
-        <DiscountEditor discount={item.discount} label={copy({ en: "Item discount", zh: "项目折扣", vi: "Giảm giá hạng mục", ar: "خصم البند" })} onChange={(discount) => onChange({ discount })} />
+        <DiscountEditor compactSelect discount={item.discount} label={copy({ en: "Item discount", zh: "项目折扣", vi: "Giảm giá hạng mục", ar: "خصم البند" })} onChange={(discount) => onChange({ discount })} />
         <div>
           <span className="label">{copy({ en: "Amount", zh: "金额", vi: "Thành tiền", ar: "المبلغ" })}</span>
-          <div className="rounded-lg border border-[var(--line)] bg-[#f8faf7] px-3 py-3 text-right font-black">
+          <div className={`rounded-lg border border-[var(--line)] bg-[#f8faf7] px-3 py-2 text-right font-black ${lineTotal(item) < 0 ? "text-[var(--rose)]" : ""}`}>
             {formatAud(lineTotal(item))}
           </div>
         </div>
+        <button className="icon-btn h-[39px] w-[38px] text-[var(--rose)]" disabled={!canDelete} onClick={onDelete} title="Delete item" type="button">
+          <Trash2 className="h-4 w-4" />
+        </button>
       </div>
+      {item.unitPrice < 0 ? (
+        <p className="mt-2 text-xs font-bold text-[var(--rose)]">
+          {copy({ en: "Recorded as a return / loss adjustment when this invoice is marked Paid.", zh: "Invoice 标记为已付款后，此项目会记入退货／损耗记录。", vi: "Được ghi là điều chỉnh trả hàng / tổn thất khi hóa đơn đã thanh toán.", ar: "يسجل كتعديل مرتجع / خسارة عند تعليم الفاتورة كمدفوعة." })}
+        </p>
+      ) : null}
     </article>
+  );
+}
+
+function AutoGrowTextArea({
+  label,
+  value,
+  onChange,
+  maxHeight
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  maxHeight: number;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    element.style.height = "0px";
+    element.style.height = `${Math.min(element.scrollHeight, maxHeight)}px`;
+    element.style.overflowY = element.scrollHeight > maxHeight ? "auto" : "hidden";
+  }, [maxHeight, value]);
+
+  return (
+    <label className="min-w-0">
+      <span className="label mb-1">{label}</span>
+      <textarea
+        className="field min-h-[39px] resize-none overflow-hidden py-2 text-sm leading-5"
+        onChange={(event) => onChange(event.target.value)}
+        ref={ref}
+        rows={1}
+        value={value}
+      />
+    </label>
+  );
+}
+
+function DecimalInput({
+  label,
+  value,
+  onChange,
+  allowNegative = false
+}: {
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+  allowNegative?: boolean;
+}) {
+  const [inputValue, setInputValue] = useState(String(value));
+  const [focused, setFocused] = useState(false);
+
+  useEffect(() => {
+    if (!focused) setInputValue(String(value));
+  }, [focused, value]);
+
+  function commit() {
+    const numeric = decimalValue(inputValue, allowNegative);
+    setFocused(false);
+    setInputValue(String(numeric));
+    onChange(numeric);
+  }
+
+  return (
+    <label>
+      <span className="label mb-1">{label}</span>
+      <input
+        aria-label={label}
+        className="field py-2 text-sm"
+        inputMode="decimal"
+        onBlur={commit}
+        onChange={(event) => {
+          const cleaned = cleanDecimalInput(event.target.value, allowNegative);
+          setInputValue(cleaned);
+          onChange(decimalValue(cleaned, allowNegative));
+        }}
+        onFocus={(event) => {
+          setFocused(true);
+          event.currentTarget.select();
+        }}
+        pattern={allowNegative ? "-?[0-9]*[.]?[0-9]{0,3}" : "[0-9]*[.]?[0-9]{0,3}"}
+        title={allowNegative ? "Up to three decimal places; negative values allowed" : "Zero or more, up to three decimal places"}
+        type="text"
+        value={inputValue}
+      />
+    </label>
   );
 }
 
 function DiscountEditor({
   label,
   discount,
-  onChange
+  onChange,
+  compactSelect = false
 }: {
   label: string;
   discount: { type: DiscountType; value: number };
   onChange: (discount: { type: DiscountType; value: number }) => void;
+  compactSelect?: boolean;
 }) {
   const [inputValue, setInputValue] = useState(String(discount.value));
 
@@ -835,7 +1003,7 @@ function DiscountEditor({
   return (
     <div>
       <span className="label">{label}</span>
-      <div className="grid grid-cols-[1fr_90px] gap-2">
+      <div className={`grid gap-2 ${compactSelect ? "grid-cols-[72px_90px]" : "grid-cols-[1fr_90px]"}`}>
         <select
           className="field"
           onChange={(event) => onChange({ ...discount, type: event.target.value as DiscountType })}

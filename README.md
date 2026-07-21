@@ -86,6 +86,21 @@ RLS policies:
 - `papermint-logos`: users may write only inside their own folder; logo files are public for document rendering.
 - `papermint-receipts`: private; users may access only files inside their own folder.
 
+### Registered user count
+
+Supabase Dashboard → Authentication → Users shows every registered email and Google account. For a count grouped by the primary sign-in provider, run this in Supabase SQL Editor (service/admin context only):
+
+```sql
+select
+  coalesce(raw_app_meta_data ->> 'provider', 'email') as sign_in_provider,
+  count(*) as registered_users
+from auth.users
+group by 1
+order by 2 desc;
+```
+
+Use `select count(*) from auth.users;` for the total. Do not expose `auth.users` or the service-role key through browser code.
+
 ## Document email and reminders
 
 1. Create a Resend account and verify a sending domain.
@@ -149,6 +164,8 @@ Acceptance path:
 11. Add an expense with a receipt, then download the FY accountant pack from Expenses.
 
 The BAS preparation PDF and CSVs cover core GST labels G1, G10, G11, 1A and 1B using the selected cash or accrual basis. They are preparation records, not automatic lodgement, and should be reviewed for adjustments, GST-free sales, exports, PAYG and other obligations before submission.
+
+Inventory / trading stock expenses are recorded as non-capital purchases, included in G11, and their claimable GST is included in 1B. The BAS summary also shows the trading stock subtotal separately for reconciliation.
 
 Free-limit QA: create 5 new invoices or quotes in one week. The sixth insert must fail with a friendly upgrade message. Editing existing documents remains available, and deleting a document does not restore the weekly allowance.
 

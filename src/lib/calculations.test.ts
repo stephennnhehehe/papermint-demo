@@ -62,6 +62,39 @@ describe("invoice calculations", () => {
     expect(totals.gst).toBe(10);
     expect(totals.total).toBe(210);
   });
+
+  it("treats negative prices as returns and reduces sales and GST", () => {
+    const totals = calculateTotals(
+      [
+        {
+          id: "sale",
+          description: "Sale",
+          details: "",
+          quantity: 2,
+          unitPrice: 100,
+          gstEnabled: true,
+          discount: { type: "percent", value: 0 }
+        },
+        {
+          id: "return",
+          description: "Returned item",
+          details: "",
+          quantity: 1.5,
+          unitPrice: -20,
+          gstEnabled: true,
+          discount: { type: "percent", value: 0 }
+        }
+      ],
+      { type: "percent", value: 0 },
+      true,
+      10
+    );
+
+    expect(totals.subtotal).toBe(170);
+    expect(totals.taxableAmount).toBe(170);
+    expect(totals.gst).toBe(17);
+    expect(totals.total).toBe(187);
+  });
 });
 
 describe("document numbering", () => {

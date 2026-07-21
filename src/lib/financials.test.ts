@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { australianFiscalYear, calculateBasSummary, inDateRange } from "./financials";
+import { australianFiscalYear, calculateBasSummary, inDateRange, returnLossRecords } from "./financials";
 import type { DocumentRow, Expense } from "./types";
 
 const invoice = {
@@ -27,6 +27,45 @@ describe("calculateBasSummary", () => {
   it("excludes unpaid invoices on a cash basis", () => {
     const summary = calculateBasSummary({ documents: [{ ...invoice, status: "sent", paid_at: null }], expenses: [], accountingBasis: "cash", periodStart: "2026-07-01", periodEnd: "2026-09-30" });
     expect(summary.g1TotalSales).toBe(0);
+  });
+
+  it("includes inventory purchases in G11 and reports trading stock separately", () => {
+    const inventoryExpense = {
+      ...expense,
+      id: "inventory-expense",
+      category: "inventory",
+      total_amount: 220,
+      gst_amount: 20
+    } as Expense;
+    const summary = calculateBasSummary({ documents: [], expenses: [inventoryExpense], accountingBasis: "cash", periodStart: "2026-07-01", periodEnd: "2026-09-30" });
+
+    expect(summary.g11NonCapitalPurchases).toBe(220);
+    expect(summary.g11TradingStockPurchases).toBe(220);
+    expect(summary.gstOnPurchases1B).toBe(20);
+  });
+
+  it("records negative paid-invoice lines as return or loss adjustments", () => {
+    const adjustedInvoice = {
+      ...invoice,
+      number: "INV-RETURN",
+      gst_enabled: true,
+      gst_rate: 10,
+      order_discount: { type: "percent", value: 0 },
+      bill_to: { name: "Customer" },
+      line_items: [
+        { id: "sale", description: "Sale", details: "", quantity: 2, unitPrice: 100, gstEnabled: true, discount: { type: "percent", value: 0 } },
+        { id: "return", description: "Damaged return", details: "One unit", quantity: 1, unitPrice: -20, gstEnabled: true, discount: { type: "percent", value: 0 } }
+      ]
+    } as DocumentRow;
+
+    expect(returnLossRecords([adjustedInvoice])).toMatchObject([
+      { documentNumber: "INV-RETURN", description: "Damaged return", amount: 20, gstAdjustment: 2 }
+    ]);
+    const summary = calculateBasSummary({ documents: [adjustedInvoice], expenses: [], accountingBasis: "cash", periodStart: "2026-07-01", periodEnd: "2026-09-30" });
+    expect(summary.g1TotalSales).toBe(198);
+    expect(summary.gstOnSales1A).toBe(18);
+    expect(summary.returnsLosses).toBe(20);
+    expect(summary.returnGstAdjustments).toBe(2);
   });
 });
 

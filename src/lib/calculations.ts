@@ -15,12 +15,16 @@ export function discountAmount(base: number, discount: Discount): number {
 }
 
 export function lineSubtotalBeforeDiscount(item: LineItem): number {
-  return clampMoney((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0));
+  return clampMoney(Math.max(0, Number(item.quantity) || 0) * (Number(item.unitPrice) || 0));
 }
 
 export function lineTotal(item: LineItem): number {
   const base = lineSubtotalBeforeDiscount(item);
   return clampMoney(base - discountAmount(base, item.discount));
+}
+
+function positiveLineSubtotal(items: LineItem[]) {
+  return clampMoney(items.reduce((sum, item) => sum + Math.max(0, lineTotal(item)), 0));
 }
 
 export function lineGstAmount(
@@ -32,10 +36,12 @@ export function lineGstAmount(
 ): number {
   if (!gstEnabled || item.gstEnabled === false) return 0;
   const lineBase = lineTotal(item);
-  const subtotal = clampMoney(allItems.reduce((sum, current) => sum + lineTotal(current), 0));
-  const orderDiscountTotal = discountAmount(subtotal, orderDiscount);
-  const discountShare = subtotal > 0 ? orderDiscountTotal * (lineBase / subtotal) : 0;
-  const taxableLineAmount = clampMoney(Math.max(0, lineBase - discountShare));
+  const discountableSubtotal = positiveLineSubtotal(allItems);
+  const orderDiscountTotal = discountAmount(discountableSubtotal, orderDiscount);
+  const discountShare = lineBase > 0 && discountableSubtotal > 0
+    ? orderDiscountTotal * (lineBase / discountableSubtotal)
+    : 0;
+  const taxableLineAmount = clampMoney(lineBase - discountShare);
   return clampMoney(taxableLineAmount * ((Number(gstRate) || 0) / 100));
 }
 
@@ -50,18 +56,21 @@ export function calculateTotals(
   );
   const subtotal = clampMoney(items.reduce((sum, item) => sum + lineTotal(item), 0));
   const lineDiscountTotal = clampMoney(subtotalBeforeDiscount - subtotal);
-  const orderDiscountTotal = discountAmount(subtotal, orderDiscount);
+  const discountableSubtotal = positiveLineSubtotal(items);
+  const orderDiscountTotal = discountAmount(discountableSubtotal, orderDiscount);
   const taxableAmount = clampMoney(
     items
       .filter((item) => item.gstEnabled !== false)
       .reduce((sum, item) => {
         const base = lineTotal(item);
-        const discountShare = subtotal > 0 ? orderDiscountTotal * (base / subtotal) : 0;
-        return sum + Math.max(0, base - discountShare);
+        const discountShare = base > 0 && discountableSubtotal > 0
+          ? orderDiscountTotal * (base / discountableSubtotal)
+          : 0;
+        return sum + base - discountShare;
       }, 0)
   );
   const gst = gstEnabled ? clampMoney(taxableAmount * ((Number(gstRate) || 0) / 100)) : 0;
-  const total = clampMoney(Math.max(0, subtotal - orderDiscountTotal) + gst);
+  const total = clampMoney(subtotal - orderDiscountTotal + gst);
 
   return {
     subtotalBeforeDiscount,

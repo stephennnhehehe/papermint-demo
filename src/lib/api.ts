@@ -1,4 +1,5 @@
 import { calculateTotals } from "./calculations";
+import { normalizeLineItems } from "./line-items";
 import { normalizeBillingStatus } from "./billing";
 import { documentFromRow } from "./documents";
 import {
@@ -216,8 +217,9 @@ export async function fetchDocument(userId: string, id: string): Promise<PaperDo
 export async function saveDocument(userId: string, document: PaperDocument): Promise<PaperDocument> {
   if (shouldUseLocalStore(userId)) return localSaveDocument(userId, document);
   const supabase = getSupabaseClient();
+  const lineItems = normalizeLineItems(document.lineItems);
   const totals = calculateTotals(
-    document.lineItems,
+    lineItems,
     document.orderDiscount,
     document.gstEnabled,
     document.gstRate
@@ -239,7 +241,7 @@ export async function saveDocument(userId: string, document: PaperDocument): Pro
     company: document.company,
     bill_to: document.billTo,
     ship_to: document.shipTo ?? null,
-    line_items: document.lineItems,
+    line_items: lineItems,
     order_discount: document.orderDiscount,
     notes: document.notes,
     payment_methods: document.paymentMethods,

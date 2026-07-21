@@ -1,4 +1,5 @@
 import { calculateTotals } from "./calculations";
+import { normalizeLineItems } from "./line-items";
 import { FREE_WEEKLY_DOCUMENT_LIMIT, freeBillingStatus, startOfLocalWeek } from "./billing";
 import { documentFromRow } from "./documents";
 import type {
@@ -178,8 +179,9 @@ export function localSaveDocument(userId: string, document: PaperDocument): Pape
     }
     writeJson(`document-usage:${userId}`, [...usage, now()]);
   }
+  const lineItems = normalizeLineItems(document.lineItems);
   const totals = calculateTotals(
-    document.lineItems,
+    lineItems,
     document.orderDiscount,
     document.gstEnabled,
     document.gstRate
@@ -202,7 +204,7 @@ export function localSaveDocument(userId: string, document: PaperDocument): Pape
     company: document.company,
     bill_to: document.billTo,
     ship_to: document.shipTo ?? null,
-    line_items: document.lineItems,
+    line_items: lineItems,
     order_discount: document.orderDiscount,
     notes: document.notes,
     payment_methods: document.paymentMethods,

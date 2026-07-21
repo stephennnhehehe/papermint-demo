@@ -28,16 +28,16 @@ export function DocumentPreview({
       : labels.discount;
 
   return (
-    <div className="print-page mx-auto flex min-h-[1120px] w-full max-w-[794px] flex-col rounded-lg border border-[var(--line)] bg-white p-7 text-left text-[#17211b] shadow-sm sm:p-10" dir="ltr" lang="en">
-      <div className="flex flex-col justify-between gap-6 border-b border-[#dfe6df] pb-7 sm:flex-row sm:items-start">
+    <div className="print-page mx-auto flex min-h-[1120px] w-full max-w-[794px] flex-col rounded-lg border border-[var(--line)] bg-white p-6 text-left text-[#17211b] shadow-sm sm:p-8" dir="ltr" lang="en">
+      <div className="flex min-h-16 flex-col justify-between gap-4 border-b border-[#dfe6df] pb-4 sm:flex-row sm:items-start">
         <div>
           <p className="text-sm font-black uppercase tracking-normal text-[var(--mint-dark)]">
             {document.type === "invoice" ? (document.gstEnabled ? labels.invoice : "INVOICE") : labels.quote}
           </p>
-          <h2 className="mt-2 break-words text-3xl font-black tracking-normal">
+          <h2 className="mt-1 break-words text-2xl font-black tracking-normal">
             {document.number || "DRAFT"}
           </h2>
-          <p className="mt-2 text-sm font-semibold text-[#66736b]">
+          <p className="mt-1 text-xs font-semibold leading-5 text-[#66736b]">
             {labels.issue}: {document.issueDate || "-"}
             <br />
             {document.type === "invoice" ? labels.due : labels.valid}:{" "}
@@ -46,57 +46,53 @@ export function DocumentPreview({
         </div>
         {document.logoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img alt="Company logo" className="h-20 max-w-40 object-contain" src={document.logoUrl} />
-        ) : (
-          <div className="grid h-20 w-32 place-items-center rounded-lg border border-dashed border-[#dfe6df] text-sm font-black text-[#66736b]">
-            PaperMint
-          </div>
-        )}
+          <img alt="Company logo" className="h-16 max-w-36 object-contain" src={document.logoUrl} />
+        ) : null}
       </div>
 
-      <div className="grid gap-5 border-b border-[#dfe6df] py-7 md:grid-cols-3">
+      <div className="grid gap-4 border-b border-[#dfe6df] py-4 md:grid-cols-3">
         <PartyBlock label={labels.from} party={document.company} />
         <PartyBlock label={labels.bill} party={document.billTo} />
         {document.shipTo ? <PartyBlock label={labels.ship} party={document.shipTo} /> : null}
       </div>
 
-      <div className="overflow-hidden py-7">
-        <table className="w-full table-fixed border-collapse text-left text-sm">
+      <div className="overflow-hidden py-4">
+        <table className="w-full table-fixed border-collapse text-left text-xs">
           <thead>
             <tr className="border-b border-[#dfe6df] text-xs uppercase text-[#66736b]">
-              <th className="w-[30%] py-3 pr-2">{labels.desc}</th>
-              <th className="w-[8%] px-2 text-right">{labels.qty}</th>
-              <th className="w-[14%] px-2 text-right">{labels.price}</th>
-              <th className="w-[14%] px-2 text-right">{labels.itemDiscount}</th>
-              <th className="w-[12%] px-2 text-right">{labels.gstColumn}</th>
-              <th className="w-[22%] py-3 pl-2 text-right">{labels.amount}</th>
+              <th className="w-[34%] py-2 pr-2">{labels.desc}</th>
+              <th className="w-[7%] px-1 text-right">{labels.qty}</th>
+              <th className="w-[14%] px-1 text-right">{labels.price}</th>
+              <th className="w-[13%] px-1 text-right">{labels.itemDiscount}</th>
+              <th className="w-[11%] px-1 text-right">{labels.gstColumn}</th>
+              <th className="w-[21%] py-2 pl-1 text-right">{labels.amount}</th>
             </tr>
           </thead>
           <tbody>
             {document.lineItems.map((item) => (
               <tr className="border-b border-[#eef2ef]" key={item.id}>
-                <td className="py-4 pr-2 align-top">
+                <td className="py-2 pr-2 align-top">
                   <p className="break-words font-black" dir="auto">{item.description || "Item"}</p>
                   {item.details ? (
-                    <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-5 text-[#66736b]" dir="auto">
+                    <p className="mt-0.5 whitespace-pre-wrap break-words text-[11px] leading-4 text-[#66736b]" dir="auto">
                       {item.details}
                     </p>
                   ) : null}
                 </td>
-                <td className="px-2 py-4 text-right align-top">{item.quantity}</td>
-                <td className="px-2 py-4 text-right align-top">{formatAud(item.unitPrice)}</td>
+                <td className="px-1 py-2 text-right align-top">{item.quantity}</td>
+                <td className="px-1 py-2 text-right align-top">{formatAud(item.unitPrice)}</td>
                 <td
-                  className={`px-2 py-4 text-right align-top font-bold ${
+                  className={`px-1 py-2 text-right align-top font-bold ${
                     item.discount.value > 0 ? "text-[var(--rose)]" : "text-[#66736b]"
                   }`}
                 >
                   {formatLineItemDiscount(item)}
                 </td>
-                <td className="px-2 py-4 text-right align-top">
+                <td className="px-1 py-2 text-right align-top">
                   {formatAud(lineGstAmount(item, document.lineItems, document.orderDiscount, document.gstEnabled, document.gstRate))}
                 </td>
-                <td className="py-4 pl-2 text-right align-top">
-                  <p className="font-black">{formatAud(lineTotal(item))}</p>
+                <td className="py-2 pl-1 text-right align-top">
+                  <p className={`font-black ${lineTotal(item) < 0 ? "text-[var(--rose)]" : ""}`}>{formatAud(lineTotal(item))}</p>
                 </td>
               </tr>
             ))}
@@ -104,7 +100,7 @@ export function DocumentPreview({
         </table>
       </div>
 
-      <div className="ml-auto grid w-full max-w-sm gap-2 text-sm">
+      <div className="ml-auto grid w-full max-w-sm gap-1.5 text-xs">
         <AmountRow label={labels.subtotal} value={formatAud(totals.subtotal)} />
         {totals.orderDiscountTotal > 0 ? (
           <AmountRow label={orderDiscountLabel} value={`-${formatAud(totals.orderDiscountTotal)}`} />
@@ -112,11 +108,11 @@ export function DocumentPreview({
         {document.gstEnabled ? (
           <AmountRow label={`${labels.gst} ${document.gstRate}%`} value={formatAud(totals.gst)} />
         ) : null}
-        <div className="mt-2 flex items-center justify-between rounded-lg bg-[#17211b] px-4 py-3 text-white">
+        <div className="mt-1 flex items-center justify-between rounded-lg bg-[#17211b] px-3 py-2 text-white">
           <span className="font-black">{labels.total}</span>
-          <span className="text-xl font-black tracking-normal">{formatAud(totals.total)}</span>
+          <span className="text-lg font-black tracking-normal">{formatAud(totals.total)}</span>
         </div>
-        <div className="mt-5 grid grid-cols-[1fr_96px] gap-5 text-[11px] text-[#66736b]">
+        <div className="mt-3 grid grid-cols-[1fr_96px] gap-4 text-[10px] text-[#66736b]">
           <div>
             <div className="h-7 border-b border-[#9aa59d]" />
             <span>{labels.acceptedBy}</span>
@@ -128,7 +124,7 @@ export function DocumentPreview({
         </div>
       </div>
 
-      <div className="mt-8 grid gap-5 border-t border-[#dfe6df] pt-6 md:grid-cols-2">
+      <div className="mt-5 grid gap-4 border-t border-[#dfe6df] pt-4 md:grid-cols-2">
         {document.paymentMethods ? (
           <TextBlock label={labels.payment} value={document.paymentMethods} />
         ) : null}
@@ -153,7 +149,7 @@ function PartyBlock({ label, party }: { label: string; party: PaperDocument["com
     <div className="min-w-0">
       <p className="mb-2 text-xs font-black uppercase tracking-normal text-[#66736b]">{label}</p>
       <p className="break-words text-base font-black" dir="auto">{party.name || "-"}</p>
-      <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-[#66736b]" dir="auto">
+      <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-5 text-[#66736b]" dir="auto">
         {[party.address, party.email, party.phone, party.abn ? `ABN ${party.abn}` : ""]
           .filter(Boolean)
           .join("\n")}
@@ -175,7 +171,7 @@ function TextBlock({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <p className="mb-2 text-xs font-black uppercase tracking-normal text-[#66736b]">{label}</p>
-      <p className="whitespace-pre-wrap break-words text-sm leading-6 text-[#66736b]" dir="auto">{value}</p>
+      <p className="whitespace-pre-wrap break-words text-xs leading-5 text-[#66736b]" dir="auto">{value}</p>
     </div>
   );
 }

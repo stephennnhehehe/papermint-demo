@@ -29,8 +29,13 @@ export function BasReportPdf({ companyName, summary }: { companyName: string; su
       <ReportRow label="G1 Total sales (GST inclusive)" value={summary.g1TotalSales} />
       <ReportRow label="G10 Capital purchases" value={summary.g10CapitalPurchases} />
       <ReportRow label="G11 Non-capital purchases" value={summary.g11NonCapitalPurchases} />
+      <ReportRow label="Trading stock purchases (included in G11)" value={summary.g11TradingStockPurchases} />
       <ReportRow label="1A GST on sales" value={summary.gstOnSales1A} />
       <ReportRow label="1B GST on purchases" value={summary.gstOnPurchases1B} />
+    </View>
+    <View style={styles.section}><Text style={styles.sectionTitle}>Returns and loss adjustments</Text>
+      <ReportRow label="Paid-invoice return / loss value" value={summary.returnsLosses} />
+      <ReportRow label="GST reduction included in 1A" value={summary.returnGstAdjustments} />
     </View>
     <View style={styles.net}><Text>Estimated net GST</Text><Text>{formatAud(summary.netGst)}</Text></View>
     <Text style={styles.note}>Preparation summary only. Review source documents, GST eligibility, adjustments, GST-free sales, exports, PAYG and any other BAS labels with your accountant or registered tax agent before lodging.</Text>

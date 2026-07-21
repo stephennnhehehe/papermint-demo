@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { createPortal } from "react-dom";
 import { pdf } from "@react-pdf/renderer";
 import { Check, ChevronDown, Copy, Download, FilePlus2, FileText, Link2, Loader2, LockKeyhole, Mail, Repeat2, Trash2, X } from "lucide-react";
 import { AppShell } from "@/components/app/AppShell";
@@ -466,6 +467,9 @@ function StatusSelect({
 }) {
   const { language } = useLanguage();
   const [open, setOpen] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuPosition, setMenuPosition] = useState({ left: 0, top: 0 });
   const classes: Record<DocumentStatus, { button: string; dot: string }> = {
     draft: { button: "bg-slate-50 text-slate-700 ring-slate-200", dot: "bg-slate-400" },
     sent: { button: "bg-blue-50 text-blue-700 ring-blue-100", dot: "bg-blue-500" },
@@ -474,19 +478,41 @@ function StatusSelect({
     cancelled: { button: "bg-zinc-50 text-zinc-600 ring-zinc-200", dot: "bg-zinc-400" }
   };
 
+  useEffect(() => {
+    if (!open) return;
+    const positionMenu = () => {
+      const rect = buttonRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const menuWidth = 160;
+      const estimatedMenuHeight = 214;
+      const openBelow = window.innerHeight - rect.bottom >= estimatedMenuHeight;
+      setMenuPosition({
+        left: Math.max(8, Math.min(rect.left, window.innerWidth - menuWidth - 8)),
+        top: openBelow ? rect.bottom + 8 : Math.max(8, rect.top - estimatedMenuHeight - 8)
+      });
+    };
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (!buttonRef.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false);
+    };
+    positionMenu();
+    window.addEventListener("resize", positionMenu);
+    window.addEventListener("scroll", positionMenu, true);
+    window.addEventListener("mousedown", closeOnOutsideClick);
+    return () => {
+      window.removeEventListener("resize", positionMenu);
+      window.removeEventListener("scroll", positionMenu, true);
+      window.removeEventListener("mousedown", closeOnOutsideClick);
+    };
+  }, [open]);
+
   return (
-    <div
-      className="relative inline-block"
-      onBlur={(event) => {
-        const nextTarget = event.relatedTarget;
-        if (!(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget)) {
-          setOpen(false);
-        }
-      }}
-    >
+    <div className="relative inline-block">
       <button
         className={`inline-flex min-w-32 items-center justify-between gap-2 rounded-full px-3 py-1.5 text-xs font-black capitalize shadow-sm ring-1 ${classes[value].button}`}
         onClick={() => setOpen((current) => !current)}
+        ref={buttonRef}
         type="button"
       >
         <span className="inline-flex items-center gap-2">
@@ -495,8 +521,12 @@ function StatusSelect({
         </span>
         <ChevronDown className={`h-3.5 w-3.5 transition ${open ? "rotate-180" : ""}`} />
       </button>
-      {open ? (
-        <div className="absolute left-0 top-full z-20 mt-2 w-40 overflow-hidden rounded-lg border border-[var(--line)] bg-white p-1 shadow-xl">
+      {open && typeof document !== "undefined" ? createPortal(
+        <div
+          className="fixed z-[100] w-40 overflow-hidden rounded-lg border border-[var(--line)] bg-white p-1 shadow-2xl"
+          ref={menuRef}
+          style={{ left: menuPosition.left, top: menuPosition.top }}
+        >
           {documentStatuses.map((status) => (
             <button
               className="flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-xs font-black capitalize text-[var(--foreground)] hover:bg-[#f4f7f4]"
@@ -514,7 +544,8 @@ function StatusSelect({
               {status === value ? <Check className="h-3.5 w-3.5" /> : null}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body
       ) : null}
     </div>
   );

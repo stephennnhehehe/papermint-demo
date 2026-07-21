@@ -7,8 +7,8 @@ registerPdfFonts();
 
 const styles = StyleSheet.create({
   page: {
-    padding: 42,
-    fontSize: 10,
+    padding: 30,
+    fontSize: 9,
     color: "#17211b",
     fontFamily: "PaperMintSans"
   },
@@ -17,7 +17,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     borderBottomWidth: 1,
     borderBottomColor: "#dfe6df",
-    paddingBottom: 28
+    paddingBottom: 16
   },
   headerLeft: {
     width: "52%",
@@ -34,37 +34,25 @@ const styles = StyleSheet.create({
     textTransform: "uppercase"
   },
   docNumber: {
-    marginTop: 8,
-    fontSize: 26,
+    marginTop: 5,
+    fontSize: 22,
     fontWeight: 700
   },
   muted: {
     color: "#66736b",
-    lineHeight: 1.5
+    lineHeight: 1.05
   },
   logo: {
     width: 112,
     height: 56,
     objectFit: "contain"
   },
-  logoPlaceholder: {
-    width: 112,
-    height: 56,
-    borderWidth: 1,
-    borderStyle: "dashed",
-    borderColor: "#dfe6df",
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    color: "#66736b",
-    fontWeight: 700
-  },
   parties: {
     flexDirection: "row",
-    gap: 18,
+    gap: 14,
     borderBottomWidth: 1,
     borderBottomColor: "#dfe6df",
-    paddingVertical: 28
+    paddingVertical: 16
   },
   party: {
     width: "31%"
@@ -73,7 +61,7 @@ const styles = StyleSheet.create({
     color: "#66736b",
     fontSize: 9,
     fontWeight: 700,
-    marginBottom: 8,
+    marginBottom: 5,
     textTransform: "uppercase"
   },
   partyName: {
@@ -88,37 +76,37 @@ const styles = StyleSheet.create({
     color: "#66736b",
     fontSize: 9,
     fontWeight: 700,
-    paddingBottom: 10,
-    paddingTop: 28,
+    paddingBottom: 7,
+    paddingTop: 16,
     textTransform: "uppercase"
   },
   row: {
     flexDirection: "row",
     borderBottomWidth: 1,
     borderBottomColor: "#eef2ef",
-    paddingVertical: 14
+    paddingVertical: 7
   },
   desc: {
-    width: "30%",
+    width: "34%",
     paddingRight: 8
   },
   qty: {
-    width: "8%",
+    width: "7%",
     textAlign: "right"
   },
   unit: {
-    width: "14%",
+    width: "13%",
     textAlign: "right"
   },
   discountHeader: {
-    width: "14%",
+    width: "13%",
     color: "#66736b",
     fontSize: 9,
     fontWeight: 700,
     textAlign: "right"
   },
   discountColumn: {
-    width: "14%",
+    width: "13%",
     color: "#c2384c",
     fontWeight: 700,
     textAlign: "right"
@@ -127,7 +115,7 @@ const styles = StyleSheet.create({
     color: "#66736b"
   },
   gstColumn: {
-    width: "12%",
+    width: "11%",
     textAlign: "right"
   },
   amount: {
@@ -135,15 +123,18 @@ const styles = StyleSheet.create({
     textAlign: "right",
     fontWeight: 700
   },
+  negativeAmount: {
+    color: "#c2384c"
+  },
   totals: {
-    marginTop: 28,
+    marginTop: 16,
     marginLeft: "auto",
     width: 300
   },
   totalRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 8
+    marginBottom: 5
   },
   grandTotal: {
     flexDirection: "row",
@@ -152,8 +143,8 @@ const styles = StyleSheet.create({
     color: "white",
     borderRadius: 8,
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginTop: 8,
+    paddingVertical: 9,
+    marginTop: 5,
     fontSize: 13,
     fontWeight: 700
   },
@@ -162,7 +153,7 @@ const styles = StyleSheet.create({
     fontWeight: 700
   },
   signature: {
-    marginTop: 18,
+    marginTop: 12,
     marginLeft: "auto",
     width: 300,
     flexDirection: "row",
@@ -173,7 +164,7 @@ const styles = StyleSheet.create({
   signatureMain: { width: 204 },
   signatureDate: { width: 78 },
   signatureLine: {
-    height: 22,
+    height: 17,
     borderBottomWidth: 1,
     borderBottomColor: "#9aa59d",
     marginBottom: 4
@@ -183,8 +174,8 @@ const styles = StyleSheet.create({
     gap: 24,
     borderTopWidth: 1,
     borderTopColor: "#dfe6df",
-    paddingTop: 24,
-    marginTop: 32
+    paddingTop: 14,
+    marginTop: 18
   },
   footerBlock: {
     flex: 1
@@ -192,8 +183,8 @@ const styles = StyleSheet.create({
   branding: {
     position: "absolute",
     bottom: 18,
-    left: 42,
-    right: 42,
+    left: 30,
+    right: 30,
     borderTopWidth: 1,
     borderTopColor: "#eef2ef",
     paddingTop: 7,
@@ -243,14 +234,14 @@ export function PaperMintPdf({
 
   return (
     <Document title={`${document.type}-${document.number}`}>
-      <Page size="A4" style={[styles.page, showBranding ? { paddingBottom: 64 } : {}]}>
+      <Page size="A4" style={[styles.page, showBranding ? { paddingBottom: 54 } : {}]}>
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <Text style={styles.docTitle}>
               {document.type === "invoice" ? (document.gstEnabled ? labels.invoice : "INVOICE") : labels.quote}
             </Text>
             <Text style={styles.docNumber}>{document.number || "DRAFT"}</Text>
-            <Text style={[styles.muted, { marginTop: 8 }]}>
+            <Text style={[styles.muted, { marginTop: 5 }]}>
               {labels.issue}: {document.issueDate || "-"}
             </Text>
             <Text style={styles.muted}>
@@ -258,15 +249,11 @@ export function PaperMintPdf({
               {document.type === "invoice" ? document.dueDate || "-" : document.validUntil || "-"}
             </Text>
           </View>
-          <View style={styles.headerRight}>
-            {document.logoUrl ? (
+          {document.logoUrl ? (
+            <View style={styles.headerRight}>
               <Image src={document.logoUrl} style={styles.logo} />
-            ) : (
-              <View style={styles.logoPlaceholder}>
-                <Text>PaperMint</Text>
-              </View>
-            )}
-          </View>
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.parties}>
@@ -288,7 +275,7 @@ export function PaperMintPdf({
           <View key={item.id} style={styles.row}>
             <View style={styles.desc}>
               <Text style={[{ fontWeight: 700 }, userTextStyle(item.description)]}>{item.description || "Item"}</Text>
-              {item.details ? <Text style={[styles.muted, { marginTop: 4 }, userTextStyle(item.details)]}>{item.details}</Text> : null}
+              {item.details ? <Text style={[styles.muted, { marginTop: 2, lineHeight: 0.85 }, userTextStyle(item.details)]}>{item.details}</Text> : null}
             </View>
             <Text style={styles.qty}>{item.quantity}</Text>
             <Text style={styles.unit}>{formatAud(item.unitPrice)}</Text>
@@ -298,7 +285,7 @@ export function PaperMintPdf({
             <Text style={styles.gstColumn}>
               {formatAud(lineGstAmount(item, document.lineItems, document.orderDiscount, document.gstEnabled, document.gstRate))}
             </Text>
-            <Text style={styles.amount}>{formatAud(lineTotal(item))}</Text>
+            <Text style={lineTotal(item) < 0 ? [styles.amount, styles.negativeAmount] : styles.amount}>{formatAud(lineTotal(item))}</Text>
           </View>
         ))}
 

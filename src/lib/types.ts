@@ -167,6 +167,7 @@ export type DocumentRow = {
 };
 
 export type ExpenseCategory =
+  | "inventory"
   | "materials"
   | "fuel"
   | "software"
@@ -221,9 +222,26 @@ export type BasSummary = {
   g1TotalSales: number;
   g10CapitalPurchases: number;
   g11NonCapitalPurchases: number;
+  g11TradingStockPurchases: number;
   gstOnSales1A: number;
   gstOnPurchases1B: number;
   netGst: number;
+  returnsLosses: number;
+  returnGstAdjustments: number;
+};
+
+export type ReturnLossRecord = {
+  documentId: string;
+  documentNumber: string;
+  date: string;
+  customer: string;
+  companyProfileId: string | null;
+  description: string;
+  details: string;
+  quantity: number;
+  unitPrice: number;
+  amount: number;
+  gstAdjustment: number;
 };
 
 export type ProfileRow = {
