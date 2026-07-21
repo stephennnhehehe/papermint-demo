@@ -44,6 +44,19 @@ describe("calculateBasSummary", () => {
     expect(summary.gstOnPurchases1B).toBe(20);
   });
 
+  it("uses only the business-use portion for BAS purchase labels", () => {
+    const mixedUseExpense = {
+      ...expense,
+      total_amount: 110,
+      gst_amount: 5,
+      business_use_percent: 50
+    } as Expense;
+    const summary = calculateBasSummary({ documents: [], expenses: [mixedUseExpense], accountingBasis: "cash", periodStart: "2026-07-01", periodEnd: "2026-09-30" });
+
+    expect(summary.g11NonCapitalPurchases).toBe(55);
+    expect(summary.gstOnPurchases1B).toBe(5);
+  });
+
   it("records negative paid-invoice lines as return or loss adjustments", () => {
     const adjustedInvoice = {
       ...invoice,

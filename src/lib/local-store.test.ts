@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createEmptyDocument, defaultCompanyProfile } from "./documents";
-import { localDeleteDocument, localSaveDocument } from "./local-store";
+import {
+  localDeleteDocument, localFetchPaymentAccounts, localFetchVehicleTrips,
+  localFetchVehicles, localSaveDocument, localUpsertPaymentAccount,
+  localUpsertVehicle, localUpsertVehicleTrip
+} from "./local-store";
 
 function memoryStorage(): Storage {
   const values = new Map<string, string>();
@@ -48,5 +52,48 @@ describe("local demo document allowance", () => {
     expect(() => localSaveDocument("demo-user", sixth)).toThrow(
       "FREE_WEEKLY_DOCUMENT_LIMIT_REACHED"
     );
+  });
+});
+
+describe("local bookkeeping records", () => {
+  beforeEach(() => {
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: { localStorage: memoryStorage() }
+    });
+  });
+
+  afterEach(() => {
+    Reflect.deleteProperty(globalThis, "window");
+  });
+
+  it("keeps one default payment account per company", () => {
+    localUpsertPaymentAccount("demo-user", { name: "Bank", account_type: "bank", company_profile_id: "company", is_default: true });
+    localUpsertPaymentAccount("demo-user", { name: "Card", account_type: "credit_card", company_profile_id: "company", is_default: true });
+
+    const accounts = localFetchPaymentAccounts("demo-user");
+    expect(accounts.filter((account) => account.is_default)).toHaveLength(1);
+    expect(accounts.find((account) => account.is_default)?.name).toBe("Card");
+  });
+
+  it("saves vehicles and complete business/private journey records", () => {
+    const vehicle = localUpsertVehicle("demo-user", { name: "Delivery van", registration: "ABC123" });
+    localUpsertVehicleTrip("demo-user", {
+      vehicle_id: vehicle.id,
+      start_date: "2026-07-21",
+      end_date: "2026-07-21",
+      origin: "Warehouse",
+      destination: "Customer",
+      purpose: "Delivery",
+      start_odometer: 1000,
+      end_odometer: 1042.5,
+      is_business: true
+    });
+
+    expect(localFetchVehicles("demo-user")).toMatchObject([{ name: "Delivery van", registration: "ABC123" }]);
+    expect(localFetchVehicleTrips("demo-user")).toMatchObject([{
+      origin: "Warehouse", destination: "Customer", purpose: "Delivery",
+      start_odometer: 1000, end_odometer: 1042.5, is_business: true
+    }]);
   });
 });

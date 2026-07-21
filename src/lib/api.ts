@@ -27,9 +27,12 @@ import type {
   DocumentRow,
   Expense,
   ExpenseReceipt,
+  PaymentAccount,
   PaperDocument,
   ProfileRow,
-  ReminderSettings
+  ReminderSettings,
+  Vehicle,
+  VehicleTrip
 } from "./types";
 
 function shouldUseLocalStore(userId: string) {
@@ -303,7 +306,13 @@ export async function upsertExpense(
     total_amount: expense.total_amount,
     gst_amount: expense.gst_amount,
     gst_claimable: expense.gst_claimable ?? true,
+    gst_treatment: expense.gst_treatment ?? "gst",
+    business_use_percent: expense.business_use_percent ?? 100,
+    payment_account_id: expense.payment_account_id ?? null,
     payment_method: expense.payment_method ?? null,
+    supplier_abn: expense.supplier_abn ?? null,
+    reference: expense.reference ?? null,
+    vehicle_id: expense.vehicle_id ?? null,
     notes: expense.notes ?? null,
     updated_at: new Date().toISOString()
   };
@@ -334,6 +343,163 @@ export async function fetchExpenseReceipts(userId: string): Promise<ExpenseRecei
     const { data: signed } = await supabase.storage.from("papermint-receipts").createSignedUrl(receipt.storage_path, 3600);
     return { ...receipt, signed_url: signed?.signedUrl ?? null } as ExpenseReceipt;
   }));
+}
+
+export async function fetchPaymentAccounts(userId: string): Promise<PaymentAccount[]> {
+  if (shouldUseLocalStore(userId)) {
+    const { localFetchPaymentAccounts } = await import("./local-store");
+    return localFetchPaymentAccounts(userId);
+  }
+  const { data, error } = await getSupabaseClient().from("payment_accounts").select("*")
+    .eq("user_id", userId).order("is_default", { ascending: false }).order("name");
+  if (error) throw error;
+  return (data ?? []) as PaymentAccount[];
+}
+
+export async function upsertPaymentAccount(
+  userId: string,
+  account: Partial<PaymentAccount> & Pick<PaymentAccount, "name" | "account_type">
+): Promise<PaymentAccount> {
+  if (shouldUseLocalStore(userId)) {
+    const { localUpsertPaymentAccount } = await import("./local-store");
+    return localUpsertPaymentAccount(userId, account);
+  }
+  const supabase = getSupabaseClient();
+  if (account.is_default) {
+    let query = supabase.from("payment_accounts").update({ is_default: false })
+      .eq("user_id", userId).eq("is_default", true);
+    query = account.company_profile_id ? query.eq("company_profile_id", account.company_profile_id) : query.is("company_profile_id", null);
+    const { error } = await query;
+    if (error) throw error;
+  }
+  const payload = {
+    ...(account.id ? { id: account.id } : {}),
+    user_id: userId,
+    company_profile_id: account.company_profile_id ?? null,
+    name: account.name,
+    account_type: account.account_type,
+    last_four: account.last_four ?? null,
+    is_default: account.is_default ?? false,
+    is_active: account.is_active ?? true,
+    notes: account.notes ?? null,
+    updated_at: new Date().toISOString()
+  };
+  const { data, error } = await supabase.from("payment_accounts").upsert(payload).select("*").single();
+  if (error) throw error;
+  return data as PaymentAccount;
+}
+
+export async function deletePaymentAccount(userId: string, id: string) {
+  if (shouldUseLocalStore(userId)) {
+    const { localDeletePaymentAccount } = await import("./local-store");
+    localDeletePaymentAccount(userId, id);
+    return;
+  }
+  const { error } = await getSupabaseClient().from("payment_accounts").delete().eq("id", id).eq("user_id", userId);
+  if (error) throw error;
+}
+
+export async function fetchVehicles(userId: string): Promise<Vehicle[]> {
+  if (shouldUseLocalStore(userId)) {
+    const { localFetchVehicles } = await import("./local-store");
+    return localFetchVehicles(userId);
+  }
+  const { data, error } = await getSupabaseClient().from("vehicles").select("*")
+    .eq("user_id", userId).order("is_active", { ascending: false }).order("name");
+  if (error) throw error;
+  return (data ?? []) as Vehicle[];
+}
+
+export async function upsertVehicle(
+  userId: string,
+  vehicle: Partial<Vehicle> & Pick<Vehicle, "name" | "registration">
+): Promise<Vehicle> {
+  if (shouldUseLocalStore(userId)) {
+    const { localUpsertVehicle } = await import("./local-store");
+    return localUpsertVehicle(userId, vehicle);
+  }
+  const payload = {
+    ...(vehicle.id ? { id: vehicle.id } : {}),
+    user_id: userId,
+    company_profile_id: vehicle.company_profile_id ?? null,
+    name: vehicle.name,
+    registration: vehicle.registration,
+    make: vehicle.make ?? null,
+    model: vehicle.model ?? null,
+    year: vehicle.year ?? null,
+    ownership_type: vehicle.ownership_type ?? "business",
+    logbook_start_date: vehicle.logbook_start_date ?? null,
+    logbook_end_date: vehicle.logbook_end_date ?? null,
+    opening_odometer: vehicle.opening_odometer ?? null,
+    closing_odometer: vehicle.closing_odometer ?? null,
+    is_active: vehicle.is_active ?? true,
+    notes: vehicle.notes ?? null,
+    updated_at: new Date().toISOString()
+  };
+  const { data, error } = await getSupabaseClient().from("vehicles").upsert(payload).select("*").single();
+  if (error) throw error;
+  return data as Vehicle;
+}
+
+export async function deleteVehicle(userId: string, id: string) {
+  if (shouldUseLocalStore(userId)) {
+    const { localDeleteVehicle } = await import("./local-store");
+    localDeleteVehicle(userId, id);
+    return;
+  }
+  const { error } = await getSupabaseClient().from("vehicles").delete().eq("id", id).eq("user_id", userId);
+  if (error) throw error;
+}
+
+export async function fetchVehicleTrips(userId: string): Promise<VehicleTrip[]> {
+  if (shouldUseLocalStore(userId)) {
+    const { localFetchVehicleTrips } = await import("./local-store");
+    return localFetchVehicleTrips(userId);
+  }
+  const { data, error } = await getSupabaseClient().from("vehicle_trips").select("*")
+    .eq("user_id", userId).order("start_date", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as VehicleTrip[];
+}
+
+export async function upsertVehicleTrip(
+  userId: string,
+  trip: Partial<VehicleTrip> & Pick<VehicleTrip, "vehicle_id" | "start_date" | "end_date" | "origin" | "destination" | "purpose" | "start_odometer" | "end_odometer">
+): Promise<VehicleTrip> {
+  if (shouldUseLocalStore(userId)) {
+    const { localUpsertVehicleTrip } = await import("./local-store");
+    return localUpsertVehicleTrip(userId, trip);
+  }
+  const payload = {
+    ...(trip.id ? { id: trip.id } : {}),
+    user_id: userId,
+    company_profile_id: trip.company_profile_id ?? null,
+    vehicle_id: trip.vehicle_id,
+    start_date: trip.start_date,
+    end_date: trip.end_date,
+    origin: trip.origin,
+    destination: trip.destination,
+    purpose: trip.purpose,
+    start_odometer: trip.start_odometer,
+    end_odometer: trip.end_odometer,
+    is_business: trip.is_business ?? true,
+    driver: trip.driver ?? null,
+    notes: trip.notes ?? null,
+    updated_at: new Date().toISOString()
+  };
+  const { data, error } = await getSupabaseClient().from("vehicle_trips").upsert(payload).select("*").single();
+  if (error) throw error;
+  return data as VehicleTrip;
+}
+
+export async function deleteVehicleTrip(userId: string, id: string) {
+  if (shouldUseLocalStore(userId)) {
+    const { localDeleteVehicleTrip } = await import("./local-store");
+    localDeleteVehicleTrip(userId, id);
+    return;
+  }
+  const { error } = await getSupabaseClient().from("vehicle_trips").delete().eq("id", id).eq("user_id", userId);
+  if (error) throw error;
 }
 
 export async function fetchReminderSettings(userId: string): Promise<ReminderSettings> {

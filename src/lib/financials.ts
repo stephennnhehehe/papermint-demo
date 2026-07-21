@@ -86,13 +86,15 @@ export function calculateBasSummary(input: {
   const expenses = input.expenses.filter((expense) =>
     companyMatches(expense.company_profile_id) && inDateRange(expense.expense_date, input.periodStart, input.periodEnd)
   );
+  const businessAmount = (expense: Expense) =>
+    Number(expense.total_amount) * Math.min(100, Math.max(0, Number(expense.business_use_percent ?? 100))) / 100;
 
   const g1TotalSales = sales.reduce((sum, document) => sum + Number(documentTotals(document)?.total ?? 0), 0);
   const gstOnSales1A = sales.reduce((sum, document) => sum + Number(documentTotals(document)?.gst ?? 0), 0);
   const gstOnPurchases1B = expenses.reduce((sum, expense) => sum + (expense.gst_claimable ? Number(expense.gst_amount) : 0), 0);
-  const g10CapitalPurchases = expenses.filter((expense) => expense.purchase_type === "capital").reduce((sum, expense) => sum + Number(expense.total_amount), 0);
-  const g11NonCapitalPurchases = expenses.filter((expense) => expense.purchase_type === "non_capital").reduce((sum, expense) => sum + Number(expense.total_amount), 0);
-  const g11TradingStockPurchases = expenses.filter((expense) => expense.category === "inventory").reduce((sum, expense) => sum + Number(expense.total_amount), 0);
+  const g10CapitalPurchases = expenses.filter((expense) => expense.purchase_type === "capital").reduce((sum, expense) => sum + businessAmount(expense), 0);
+  const g11NonCapitalPurchases = expenses.filter((expense) => expense.purchase_type === "non_capital").reduce((sum, expense) => sum + businessAmount(expense), 0);
+  const g11TradingStockPurchases = expenses.filter((expense) => expense.category === "inventory").reduce((sum, expense) => sum + businessAmount(expense), 0);
   const adjustments = returnLossRecords(sales);
   const returnsLosses = adjustments.reduce((sum, item) => sum + item.amount, 0);
   const returnGstAdjustments = adjustments.reduce((sum, item) => sum + item.gstAdjustment, 0);

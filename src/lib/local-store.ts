@@ -10,9 +10,12 @@ import type {
   DocumentRow,
   Expense,
   ExpenseReceipt,
+  PaymentAccount,
   PaperDocument,
   ProfileRow,
-  ReminderSettings
+  ReminderSettings,
+  Vehicle,
+  VehicleTrip
 } from "./types";
 
 const prefix = "papermint:local";
@@ -232,7 +235,15 @@ export function localDeleteDocument(userId: string, id: string) {
 }
 
 export function localFetchExpenses(userId: string): Expense[] {
-  return readJson<Expense[]>(`expenses:${userId}`, []).sort((a, b) =>
+  return readJson<Expense[]>(`expenses:${userId}`, []).map((expense) => ({
+    ...expense,
+    gst_treatment: expense.gst_treatment ?? (expense.gst_claimable ? "gst" : "gst_free"),
+    business_use_percent: expense.business_use_percent ?? 100,
+    payment_account_id: expense.payment_account_id ?? null,
+    supplier_abn: expense.supplier_abn ?? null,
+    reference: expense.reference ?? null,
+    vehicle_id: expense.vehicle_id ?? null
+  })).sort((a, b) =>
     b.expense_date.localeCompare(a.expense_date)
   );
 }
@@ -254,7 +265,13 @@ export function localUpsertExpense(
     total_amount: Number(expense.total_amount) || 0,
     gst_amount: Number(expense.gst_amount) || 0,
     gst_claimable: expense.gst_claimable ?? true,
+    gst_treatment: expense.gst_treatment ?? "gst",
+    business_use_percent: Math.min(100, Math.max(0, Number(expense.business_use_percent ?? 100))),
+    payment_account_id: expense.payment_account_id ?? null,
     payment_method: expense.payment_method ?? null,
+    supplier_abn: expense.supplier_abn ?? null,
+    reference: expense.reference ?? null,
+    vehicle_id: expense.vehicle_id ?? null,
     notes: expense.notes ?? null,
     created_at: existing?.created_at ?? now(),
     updated_at: now()
@@ -279,6 +296,128 @@ export function localSaveExpenseReceipt(userId: string, receipt: ExpenseReceipt)
 
 export function localDeleteExpenseReceipt(userId: string, id: string) {
   writeJson(`expense-receipts:${userId}`, localFetchExpenseReceipts(userId).filter((receipt) => receipt.id !== id));
+}
+
+export function localFetchPaymentAccounts(userId: string): PaymentAccount[] {
+  return readJson<PaymentAccount[]>(`payment-accounts:${userId}`, []).sort((a, b) =>
+    Number(b.is_default) - Number(a.is_default) || a.name.localeCompare(b.name)
+  );
+}
+
+export function localUpsertPaymentAccount(
+  userId: string,
+  account: Partial<PaymentAccount> & Pick<PaymentAccount, "name" | "account_type">
+): PaymentAccount {
+  const accounts = localFetchPaymentAccounts(userId);
+  const existing = accounts.find((item) => item.id === account.id);
+  const saved: PaymentAccount = {
+    id: account.id ?? crypto.randomUUID(),
+    user_id: userId,
+    company_profile_id: account.company_profile_id ?? null,
+    name: account.name,
+    account_type: account.account_type,
+    last_four: account.last_four ?? null,
+    is_default: account.is_default ?? false,
+    is_active: account.is_active ?? true,
+    notes: account.notes ?? null,
+    created_at: existing?.created_at ?? now(),
+    updated_at: now()
+  };
+  const next = [saved, ...accounts.filter((item) => item.id !== saved.id)].map((item) =>
+    saved.is_default && item.company_profile_id === saved.company_profile_id && item.id !== saved.id
+      ? { ...item, is_default: false }
+      : item
+  );
+  writeJson(`payment-accounts:${userId}`, next);
+  return saved;
+}
+
+export function localDeletePaymentAccount(userId: string, id: string) {
+  writeJson(`payment-accounts:${userId}`, localFetchPaymentAccounts(userId).filter((item) => item.id !== id));
+  writeJson(`expenses:${userId}`, localFetchExpenses(userId).map((expense) =>
+    expense.payment_account_id === id ? { ...expense, payment_account_id: null } : expense
+  ));
+}
+
+export function localFetchVehicles(userId: string): Vehicle[] {
+  return readJson<Vehicle[]>(`vehicles:${userId}`, []).sort((a, b) =>
+    Number(b.is_active) - Number(a.is_active) || a.name.localeCompare(b.name)
+  );
+}
+
+export function localUpsertVehicle(
+  userId: string,
+  vehicle: Partial<Vehicle> & Pick<Vehicle, "name" | "registration">
+): Vehicle {
+  const vehicles = localFetchVehicles(userId);
+  const existing = vehicles.find((item) => item.id === vehicle.id);
+  const saved: Vehicle = {
+    id: vehicle.id ?? crypto.randomUUID(),
+    user_id: userId,
+    company_profile_id: vehicle.company_profile_id ?? null,
+    name: vehicle.name,
+    registration: vehicle.registration,
+    make: vehicle.make ?? null,
+    model: vehicle.model ?? null,
+    year: vehicle.year ?? null,
+    ownership_type: vehicle.ownership_type ?? "business",
+    logbook_start_date: vehicle.logbook_start_date ?? null,
+    logbook_end_date: vehicle.logbook_end_date ?? null,
+    opening_odometer: vehicle.opening_odometer ?? null,
+    closing_odometer: vehicle.closing_odometer ?? null,
+    is_active: vehicle.is_active ?? true,
+    notes: vehicle.notes ?? null,
+    created_at: existing?.created_at ?? now(),
+    updated_at: now()
+  };
+  writeJson(`vehicles:${userId}`, [saved, ...vehicles.filter((item) => item.id !== saved.id)]);
+  return saved;
+}
+
+export function localDeleteVehicle(userId: string, id: string) {
+  writeJson(`vehicles:${userId}`, localFetchVehicles(userId).filter((item) => item.id !== id));
+  writeJson(`vehicle-trips:${userId}`, localFetchVehicleTrips(userId).filter((item) => item.vehicle_id !== id));
+  writeJson(`expenses:${userId}`, localFetchExpenses(userId).map((expense) =>
+    expense.vehicle_id === id ? { ...expense, vehicle_id: null } : expense
+  ));
+}
+
+export function localFetchVehicleTrips(userId: string): VehicleTrip[] {
+  return readJson<VehicleTrip[]>(`vehicle-trips:${userId}`, []).sort((a, b) =>
+    b.start_date.localeCompare(a.start_date) || b.created_at.localeCompare(a.created_at)
+  );
+}
+
+export function localUpsertVehicleTrip(
+  userId: string,
+  trip: Partial<VehicleTrip> & Pick<VehicleTrip, "vehicle_id" | "start_date" | "end_date" | "origin" | "destination" | "purpose" | "start_odometer" | "end_odometer">
+): VehicleTrip {
+  const trips = localFetchVehicleTrips(userId);
+  const existing = trips.find((item) => item.id === trip.id);
+  const saved: VehicleTrip = {
+    id: trip.id ?? crypto.randomUUID(),
+    user_id: userId,
+    company_profile_id: trip.company_profile_id ?? null,
+    vehicle_id: trip.vehicle_id,
+    start_date: trip.start_date,
+    end_date: trip.end_date,
+    origin: trip.origin,
+    destination: trip.destination,
+    purpose: trip.purpose,
+    start_odometer: Number(trip.start_odometer),
+    end_odometer: Number(trip.end_odometer),
+    is_business: trip.is_business ?? true,
+    driver: trip.driver ?? null,
+    notes: trip.notes ?? null,
+    created_at: existing?.created_at ?? now(),
+    updated_at: now()
+  };
+  writeJson(`vehicle-trips:${userId}`, [saved, ...trips.filter((item) => item.id !== saved.id)]);
+  return saved;
+}
+
+export function localDeleteVehicleTrip(userId: string, id: string) {
+  writeJson(`vehicle-trips:${userId}`, localFetchVehicleTrips(userId).filter((item) => item.id !== id));
 }
 
 export function localFetchReminderSettings(userId: string): ReminderSettings {

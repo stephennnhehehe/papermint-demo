@@ -179,6 +179,31 @@ export type ExpenseCategory =
   | "office"
   | "other";
 
+export type PaymentAccountType =
+  | "bank"
+  | "credit_card"
+  | "cash"
+  | "director_loan"
+  | "owner_contribution"
+  | "reimbursement_clearing"
+  | "other";
+
+export type PaymentAccount = {
+  id: string;
+  user_id: string;
+  company_profile_id: string | null;
+  name: string;
+  account_type: PaymentAccountType;
+  last_four: string | null;
+  is_default: boolean;
+  is_active: boolean;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type GstTreatment = "gst" | "gst_free" | "input_taxed" | "not_registered";
+
 export type Expense = {
   id: string;
   user_id: string;
@@ -190,7 +215,52 @@ export type Expense = {
   total_amount: number;
   gst_amount: number;
   gst_claimable: boolean;
+  gst_treatment: GstTreatment;
+  business_use_percent: number;
+  payment_account_id: string | null;
   payment_method: string | null;
+  supplier_abn: string | null;
+  reference: string | null;
+  vehicle_id: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Vehicle = {
+  id: string;
+  user_id: string;
+  company_profile_id: string | null;
+  name: string;
+  registration: string;
+  make: string | null;
+  model: string | null;
+  year: number | null;
+  ownership_type: "business" | "personal" | "leased" | "director";
+  logbook_start_date: string | null;
+  logbook_end_date: string | null;
+  opening_odometer: number | null;
+  closing_odometer: number | null;
+  is_active: boolean;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type VehicleTrip = {
+  id: string;
+  user_id: string;
+  company_profile_id: string | null;
+  vehicle_id: string;
+  start_date: string;
+  end_date: string;
+  origin: string;
+  destination: string;
+  purpose: string;
+  start_odometer: number;
+  end_odometer: number;
+  is_business: boolean;
+  driver: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;

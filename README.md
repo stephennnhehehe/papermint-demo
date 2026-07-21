@@ -50,6 +50,7 @@ Only variables prefixed with `NEXT_PUBLIC_` reach the browser. `SUPABASE_SERVICE
 2. Open SQL Editor and run [`supabase/schema.sql`](./supabase/schema.sql).
 3. Run [`supabase/migrations/20260716_cashflow_expenses.sql`](./supabase/migrations/20260716_cashflow_expenses.sql) to add document delivery, reminders, expenses and BAS data.
 4. Run [`supabase/migrations/20260716_lifetime_access.sql`](./supabase/migrations/20260716_lifetime_access.sql) to support managed complimentary accounts.
+5. Run [`supabase/migrations/20260721_expense_ledger_logbook.sql`](./supabase/migrations/20260721_expense_ledger_logbook.sql) to add payment accounts, expense tax fields, vehicles and ATO-style logbook records.
 5. In Authentication → Providers, enable Email.
 6. In Authentication → URL Configuration, set the production Site URL and add both `http://localhost:3000/**` and the production `https://...vercel.app/**` redirect URLs. Password reset links return to `/reset-password`.
 7. In Project Settings → API Keys, copy the project URL, publishable/anon key and server-only service role key into `.env.local`.
