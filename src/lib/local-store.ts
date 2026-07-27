@@ -1,4 +1,5 @@
 import { calculateTotals } from "./calculations";
+import { calculateInventoryPosition } from "./inventory-ledger";
 import { normalizeLineItems } from "./line-items";
 import { FREE_WEEKLY_DOCUMENT_LIMIT, freeBillingStatus, startOfLocalWeek } from "./billing";
 import { documentFromRow } from "./documents";
@@ -491,12 +492,18 @@ function localRefreshPaymentStatus(userId: string, documentId: string) {
   writeJson(`documents:${userId}`, [updated, ...documents.filter((item) => item.id !== documentId)]);
 }
 
+function localReadAllInventoryProducts(userId: string) {
+  return readJson<InventoryProduct[]>(`inventory-products:${userId}`, []);
+}
+
 export function localFetchInventoryProducts(userId: string) {
-  return readJson<InventoryProduct[]>(`inventory-products:${userId}`, []).sort((a, b) => a.name.localeCompare(b.name));
+  return localReadAllInventoryProducts(userId)
+    .filter((item) => !item.deleted_at)
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export function localUpsertInventoryProduct(userId: string, product: Partial<InventoryProduct> & Pick<InventoryProduct, "name" | "sku">) {
-  const rows = localFetchInventoryProducts(userId);
+  const rows = localReadAllInventoryProducts(userId);
   const existing = rows.find((item) => item.id === product.id);
   const duplicateSku = rows.find((item) =>
     item.id !== product.id &&
@@ -508,12 +515,30 @@ export function localUpsertInventoryProduct(userId: string, product: Partial<Inv
   return saved;
 }
 
+export function localDeleteInventoryProduct(userId: string, productId: string) {
+  const rows = localReadAllInventoryProducts(userId);
+  const existing = rows.find((item) => item.id === productId && !item.deleted_at);
+  if (!existing) throw new Error("Product not found.");
+  const deleted: InventoryProduct = {
+    ...existing,
+    sku: `${existing.sku}~DELETED~${existing.id.slice(0, 8)}`,
+    is_active: false,
+    deleted_at: now(),
+    updated_at: now()
+  };
+  writeJson(`inventory-products:${userId}`, [
+    deleted,
+    ...rows.filter((item) => item.id !== productId)
+  ]);
+  return deleted;
+}
+
 export function localFetchInventoryMovements(userId: string) {
   return readJson<InventoryMovement[]>(`inventory-movements:${userId}`, []).sort((a, b) => b.movement_date.localeCompare(a.movement_date) || b.created_at.localeCompare(a.created_at));
 }
 
 export function localRecordInventoryMovement(userId: string, movement: Omit<InventoryMovement, "id" | "user_id" | "created_at">) {
-  const products = localFetchInventoryProducts(userId);
+  const products = localReadAllInventoryProducts(userId);
   const product = products.find((item) => item.id === movement.product_id);
   if (!product) throw new Error("Product not found.");
   const delta = Number(movement.quantity_delta);
@@ -524,6 +549,59 @@ export function localRecordInventoryMovement(userId: string, movement: Omit<Inve
   writeJson(`inventory-products:${userId}`, [updated, ...products.filter((item) => item.id !== product.id)]);
   const saved: InventoryMovement = { ...movement, quantity_delta: delta, unit_cost: cost, id: crypto.randomUUID(), user_id: userId, created_at: now() };
   writeJson(`inventory-movements:${userId}`, [saved, ...localFetchInventoryMovements(userId)]);
+  return saved;
+}
+
+function localRecalculateInventoryProduct(userId: string, productId: string) {
+  const products = localReadAllInventoryProducts(userId);
+  const product = products.find((item) => item.id === productId);
+  if (!product) return;
+  const position = calculateInventoryPosition(
+    localFetchInventoryMovements(userId).filter((item) => item.product_id === productId)
+  );
+  const updated: InventoryProduct = {
+    ...product,
+    quantity_on_hand: position.quantityOnHand,
+    average_cost: position.averageCost,
+    updated_at: now()
+  };
+  writeJson(`inventory-products:${userId}`, [
+    updated,
+    ...products.filter((item) => item.id !== productId)
+  ]);
+}
+
+export function localReplaceInventoryMovement(
+  userId: string,
+  movementId: string,
+  movement: Omit<InventoryMovement, "id" | "user_id" | "created_at">
+) {
+  const rows = localFetchInventoryMovements(userId);
+  const original = rows.find((item) => item.id === movementId);
+  if (!original) throw new Error("Stock change not found.");
+  if (original.source_type && original.source_type !== "manual") {
+    throw new Error("Automatic stock changes cannot be edited.");
+  }
+  if (!localReadAllInventoryProducts(userId).some((item) => item.id === movement.product_id && !item.deleted_at)) {
+    throw new Error("Product not found.");
+  }
+
+  const saved: InventoryMovement = {
+    ...movement,
+    id: original.id,
+    user_id: original.user_id,
+    source_type: "manual",
+    source_id: null,
+    created_at: original.created_at
+  };
+  writeJson(`inventory-movements:${userId}`, [
+    saved,
+    ...rows.filter((item) => item.id !== movementId)
+  ]);
+  localRecalculateInventoryProduct(userId, original.product_id);
+  if (original.product_id !== saved.product_id) {
+    localRecalculateInventoryProduct(userId, saved.product_id);
+  }
   return saved;
 }
 

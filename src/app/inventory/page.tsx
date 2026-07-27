@@ -1,20 +1,35 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { Boxes, ListPlus, Pencil, Plus, Search, TrendingUp, X } from "lucide-react";
+import { Boxes, ListPlus, Pencil, Plus, Search, Trash2, TrendingUp, X } from "lucide-react";
 import { AppShell } from "@/components/app/AppShell";
 import { ProtectedRoute } from "@/components/app/ProtectedRoute";
 import { useAuth } from "@/components/app/AuthProvider";
 import { useLanguage } from "@/components/app/LanguageProvider";
 import { useToast } from "@/components/app/ToastProvider";
 import { ProductSearchInput } from "@/components/inventory/ProductSearchInput";
-import { fetchInventoryMovements, fetchInventoryProducts, recordInventoryMovement, upsertInventoryProduct } from "@/lib/api";
+import {
+  deleteInventoryProduct,
+  fetchInventoryMovements,
+  fetchInventoryProducts,
+  recordInventoryMovement,
+  replaceInventoryMovement,
+  upsertInventoryProduct
+} from "@/lib/api";
 import { formatAud } from "@/lib/calculations";
 import { pickLanguage } from "@/lib/i18n";
 import { generateInventoryProducts, parseBulkProductLines } from "@/lib/inventory-products";
 import type { InventoryMovement, InventoryMovementType, InventoryProduct } from "@/lib/types";
 
 const today = () => new Date().toISOString().slice(0, 10);
+const manualMovementTypes: InventoryMovementType[] = [
+  "purchase",
+  "customer_return",
+  "supplier_return",
+  "loss",
+  "adjustment",
+  "opening"
+];
 
 type ProductForm = {
   id?: string;
@@ -53,6 +68,42 @@ function toProductForm(product: InventoryProduct): ProductForm {
   };
 }
 
+type MovementForm = {
+  id?: string;
+  productId: string;
+  type: InventoryMovementType;
+  quantity: string;
+  cost: string;
+  date: string;
+  reference: string;
+  notes: string;
+};
+
+function emptyMovementForm(): MovementForm {
+  return {
+    productId: "",
+    type: "purchase",
+    quantity: "1",
+    cost: "0",
+    date: today(),
+    reference: "",
+    notes: ""
+  };
+}
+
+function toMovementForm(movement: InventoryMovement): MovementForm {
+  return {
+    id: movement.id,
+    productId: movement.product_id,
+    type: movement.movement_type,
+    quantity: String(Math.abs(movement.quantity_delta)),
+    cost: String(movement.unit_cost),
+    date: movement.movement_date,
+    reference: movement.reference ?? "",
+    notes: movement.notes ?? ""
+  };
+}
+
 export default function InventoryPage() {
   const { user } = useAuth();
   const { language } = useLanguage();
@@ -69,7 +120,10 @@ export default function InventoryPage() {
   const [bulkText, setBulkText] = useState("");
   const [savingProduct, setSavingProduct] = useState(false);
   const [savingBulk, setSavingBulk] = useState(false);
-  const [movement, setMovement] = useState({ productId: "", type: "purchase" as InventoryMovementType, quantity: "1", cost: "0", date: today(), reference: "", notes: "" });
+  const [savingMovement, setSavingMovement] = useState(false);
+  const [deletingProduct, setDeletingProduct] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<InventoryProduct | null>(null);
+  const [movement, setMovement] = useState<MovementForm>(emptyMovementForm);
 
   const movementLabels: Record<InventoryMovementType, string> = {
     opening: copy({ en: "Opening balance", zh: "期初库存" }),
@@ -122,6 +176,62 @@ export default function InventoryPage() {
     ),
     [parsedBulk.items, products]
   );
+
+  function scrollToPanel(panelId: string) {
+    window.requestAnimationFrame(() => {
+      document.getElementById(panelId)?.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
+    });
+  }
+
+  function openNewProduct() {
+    setProduct(emptyProductForm);
+    setProductOpen(true);
+    setBulkOpen(false);
+    setMovementOpen(false);
+    setMovement(emptyMovementForm());
+    scrollToPanel("product-form");
+  }
+
+  function openProductEditor(item: InventoryProduct) {
+    setProduct(toProductForm(item));
+    setProductOpen(true);
+    setBulkOpen(false);
+    setMovementOpen(false);
+    setMovement(emptyMovementForm());
+    scrollToPanel("product-form");
+  }
+
+  function toggleBulkPanel() {
+    const opening = !bulkOpen;
+    setBulkOpen(opening);
+    setProductOpen(false);
+    setProduct(emptyProductForm);
+    setMovementOpen(false);
+    setMovement(emptyMovementForm());
+    if (opening) scrollToPanel("bulk-product-form");
+  }
+
+  function toggleMovementPanel() {
+    const opening = !movementOpen;
+    setMovementOpen(opening);
+    setMovement(emptyMovementForm());
+    setProductOpen(false);
+    setProduct(emptyProductForm);
+    setBulkOpen(false);
+    if (opening) scrollToPanel("stock-change-form");
+  }
+
+  function openMovementEditor(item: InventoryMovement) {
+    setMovement(toMovementForm(item));
+    setMovementOpen(true);
+    setProductOpen(false);
+    setProduct(emptyProductForm);
+    setBulkOpen(false);
+    scrollToPanel("stock-change-form");
+  }
 
   async function saveProduct(event: FormEvent) {
     event.preventDefault();
@@ -197,8 +307,15 @@ export default function InventoryPage() {
     event.preventDefault();
     if (!user || !movement.productId) return;
     const quantity = Math.abs(Number(movement.quantity));
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      showToast(copy({
+        en: "Quantity must be greater than zero.",
+        zh: "数量必须大于 0。"
+      }), "error");
+      return;
+    }
     const negative = ["sale", "supplier_return", "loss"].includes(movement.type);
-    await recordInventoryMovement(user.id, {
+    const payload = {
       product_id: movement.productId,
       movement_type: movement.type,
       quantity_delta: negative ? -quantity : quantity,
@@ -208,11 +325,60 @@ export default function InventoryPage() {
       notes: movement.notes || null,
       source_type: "manual",
       source_id: null
-    });
-    setMovement((value) => ({ ...value, quantity: "1", cost: "0", reference: "", notes: "" }));
-    setMovementOpen(false);
-    await reload();
-    showToast(copy({ en: "Stock movement recorded.", zh: "库存变动已记录。" }));
+    };
+
+    setSavingMovement(true);
+    try {
+      if (movement.id) {
+        await replaceInventoryMovement(user.id, movement.id, payload);
+      } else {
+        await recordInventoryMovement(user.id, payload);
+      }
+      const updated = Boolean(movement.id);
+      setMovement(emptyMovementForm());
+      setMovementOpen(false);
+      await reload();
+      showToast(copy({
+        en: updated ? "Stock change updated." : "Stock change recorded.",
+        zh: updated ? "库存变动已更新。" : "库存变动已记录。"
+      }));
+    } catch (error) {
+      showToast(
+        error instanceof Error ? error.message : copy({
+          en: "Unable to save the stock change.",
+          zh: "无法保存库存变动。"
+        }),
+        "error"
+      );
+    } finally {
+      setSavingMovement(false);
+    }
+  }
+
+  async function confirmDeleteProduct() {
+    if (!user || !deleteTarget) return;
+    setDeletingProduct(true);
+    try {
+      await deleteInventoryProduct(user.id, deleteTarget.id);
+      setDeleteTarget(null);
+      setProduct(emptyProductForm);
+      setProductOpen(false);
+      await reload();
+      showToast(copy({
+        en: "Product deleted. Existing invoice and stock history was preserved.",
+        zh: "商品已删除，原有 Invoice 和库存历史记录已保留。"
+      }));
+    } catch (error) {
+      showToast(
+        error instanceof Error ? error.message : copy({
+          en: "Unable to delete this product.",
+          zh: "无法删除该商品。"
+        }),
+        "error"
+      );
+    } finally {
+      setDeletingProduct(false);
+    }
   }
 
   return (
@@ -230,22 +396,27 @@ export default function InventoryPage() {
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <button className="btn-secondary" onClick={() => setMovementOpen(!movementOpen)} type="button">
+              <button
+                className={movementOpen ? "btn-primary" : "btn-secondary"}
+                onClick={toggleMovementPanel}
+                type="button"
+              >
                 <TrendingUp className="h-4 w-4" />
                 {copy({ en: "Record stock change", zh: "记录库存变动" })}
               </button>
-              <button className="btn-secondary" onClick={() => {
-                setBulkOpen((open) => !open);
-                setProductOpen(false);
-              }} type="button">
+              <button
+                className={bulkOpen ? "btn-primary" : "btn-secondary"}
+                onClick={toggleBulkPanel}
+                type="button"
+              >
                 <ListPlus className="h-4 w-4" />
                 {copy({ en: "Bulk add products", zh: "批量生成商品" })}
               </button>
-              <button className="btn-primary" onClick={() => {
-                setProduct(emptyProductForm);
-                setProductOpen(true);
-                setBulkOpen(false);
-              }} type="button">
+              <button
+                className={productOpen && !product.id ? "btn-primary" : "btn-secondary"}
+                onClick={openNewProduct}
+                type="button"
+              >
                 <Plus className="h-4 w-4" />
                 {copy({ en: "New product", zh: "新建商品" })}
               </button>
@@ -259,7 +430,7 @@ export default function InventoryPage() {
           </section>
 
           {productOpen ? (
-            <form className="panel grid gap-3 p-5 md:grid-cols-3" onSubmit={saveProduct}>
+            <form className="panel grid scroll-mt-4 gap-3 p-5 md:grid-cols-3" id="product-form" onSubmit={saveProduct}>
               <div className="flex items-start justify-between gap-3 md:col-span-3">
                 <div>
                   <h2>{product.id
@@ -297,17 +468,32 @@ export default function InventoryPage() {
                 <input checked={product.active} onChange={(event) => setProduct({ ...product, active: event.target.checked })} type="checkbox" />
                 {copy({ en: "Product is active", zh: "商品启用中" })}
               </label>
-              <button className="btn-primary md:col-start-3" disabled={savingProduct} type="submit">
-                {copy({
-                  en: product.id ? "Save changes" : "Save product",
-                  zh: product.id ? "保存修改" : "保存商品"
-                })}
-              </button>
+              <div className="flex flex-wrap items-center justify-between gap-3 md:col-span-3">
+                {product.id ? (
+                  <button
+                    className="btn-secondary border-[#e8c9c9] bg-[#fff8f7] text-[var(--rose)]"
+                    onClick={() => {
+                      const matched = products.find((item) => item.id === product.id);
+                      if (matched) setDeleteTarget(matched);
+                    }}
+                    type="button"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    {copy({ en: "Delete product", zh: "删除商品" })}
+                  </button>
+                ) : <span />}
+                <button className="btn-primary" disabled={savingProduct} type="submit">
+                  {copy({
+                    en: product.id ? "Save changes" : "Save product",
+                    zh: product.id ? "保存修改" : "保存商品"
+                  })}
+                </button>
+              </div>
             </form>
           ) : null}
 
           {bulkOpen ? (
-            <section className="panel grid gap-4 p-5">
+            <section className="panel grid scroll-mt-4 gap-4 p-5" id="bulk-product-form">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h2>{copy({ en: "Bulk add products", zh: "批量生成商品" })}</h2>
@@ -391,12 +577,36 @@ export default function InventoryPage() {
           ) : null}
 
           {movementOpen ? (
-            <form className="panel grid gap-3 p-5 md:grid-cols-3" onSubmit={saveMovement}>
-              <div className="md:col-span-3">
-                <h2>{copy({ en: "Record stock change", zh: "记录库存变动" })}</h2>
-                <p className="mt-1 text-sm font-semibold text-[var(--muted)]">
-                  {copy({ en: "Invoice sales are recorded automatically when an invoice is marked Sent.", zh: "发票标记为 Sent 后，相关商品会自动扣减，无需在这里重复记录。" })}
-                </p>
+            <form className="panel grid scroll-mt-4 gap-3 p-5 md:grid-cols-3" id="stock-change-form" onSubmit={saveMovement}>
+              <div className="flex items-start justify-between gap-3 md:col-span-3">
+                <div>
+                  <h2>{movement.id
+                    ? copy({ en: "Edit stock change", zh: "修改库存变动" })
+                    : copy({ en: "Record stock change", zh: "记录库存变动" })}
+                  </h2>
+                  <p className="mt-1 text-sm font-semibold text-[var(--muted)]">
+                    {movement.id
+                      ? copy({
+                          en: "The product balance and average cost will be recalculated after saving.",
+                          zh: "保存后会重新计算相关商品的库存数量和平均成本。"
+                        })
+                      : copy({
+                          en: "Invoice sales are recorded automatically when an invoice is marked Sent.",
+                          zh: "发票标记为 Sent 后，相关商品会自动扣减，无需在这里重复记录。"
+                        })}
+                  </p>
+                </div>
+                <button
+                  className="icon-btn"
+                  onClick={() => {
+                    setMovementOpen(false);
+                    setMovement(emptyMovementForm());
+                  }}
+                  title={copy({ en: "Close", zh: "关闭" })}
+                  type="button"
+                >
+                  <X className="h-4 w-4" />
+                </button>
               </div>
               <ProductSearchInput
                 label={copy({ en: "Product", zh: "商品" })}
@@ -409,7 +619,7 @@ export default function InventoryPage() {
               <label>
                 <span className="label">{copy({ en: "What changed?", zh: "变动原因" })}</span>
                 <select className="field" value={movement.type} onChange={(event) => setMovement({ ...movement, type: event.target.value as InventoryMovementType })}>
-                  {(["purchase", "customer_return", "supplier_return", "loss", "adjustment", "opening"] as InventoryMovementType[]).map((type) => (
+                  {manualMovementTypes.map((type) => (
                     <option key={type} value={type}>{movementLabels[type]}</option>
                   ))}
                 </select>
@@ -419,7 +629,13 @@ export default function InventoryPage() {
               <Field label={copy({ en: "Date", zh: "日期" })} type="date" value={movement.date} onChange={(date) => setMovement({ ...movement, date })} />
               <Field label={copy({ en: "Reference", zh: "参考编号" })} value={movement.reference} onChange={(reference) => setMovement({ ...movement, reference })} />
               <Field label={copy({ en: "Notes", zh: "备注" })} value={movement.notes} onChange={(notes) => setMovement({ ...movement, notes })} />
-              <button className="btn-primary md:col-start-3" type="submit">{copy({ en: "Save stock change", zh: "保存库存变动" })}</button>
+              <button className="btn-primary md:col-start-3" disabled={savingMovement} type="submit">
+                {savingMovement
+                  ? copy({ en: "Saving...", zh: "保存中..." })
+                  : movement.id
+                    ? copy({ en: "Save changes", zh: "保存修改" })
+                    : copy({ en: "Save stock change", zh: "保存库存变动" })}
+              </button>
             </form>
           ) : null}
 
@@ -462,11 +678,11 @@ export default function InventoryPage() {
               </div>
             </div>
             {products.length ? (
-              <div className="overflow-x-auto">
+              <div className="max-h-[668px] overflow-auto">
                 <table className="w-full min-w-[820px] text-left">
-                  <thead><tr><Th>SKU / {copy({ en: "Product", zh: "商品" })}</Th><Th>{copy({ en: "On hand", zh: "当前库存" })}</Th><Th>{copy({ en: "Average cost", zh: "平均成本" })}</Th><Th>{copy({ en: "Sale price", zh: "销售价格" })}</Th><Th>{copy({ en: "Stock value", zh: "库存价值" })}</Th><Th>{copy({ en: "Actions", zh: "操作" })}</Th></tr></thead>
+                  <thead className="sticky top-0 z-10 bg-[#f8faf7] shadow-[0_1px_0_var(--line)]"><tr><Th>SKU / {copy({ en: "Product", zh: "商品" })}</Th><Th>{copy({ en: "On hand", zh: "当前库存" })}</Th><Th>{copy({ en: "Average cost", zh: "平均成本" })}</Th><Th>{copy({ en: "Sale price", zh: "销售价格" })}</Th><Th>{copy({ en: "Stock value", zh: "库存价值" })}</Th><Th>{copy({ en: "Actions", zh: "操作" })}</Th></tr></thead>
                   <tbody>{filteredProducts.map((item) => (
-                    <tr className="border-t border-[var(--line)]" key={item.id}>
+                    <tr className="h-[78px] border-t border-[var(--line)]" key={item.id}>
                       <Td>
                         <div className="flex flex-wrap items-center gap-2">
                           <b>{item.sku}</b>
@@ -484,11 +700,7 @@ export default function InventoryPage() {
                       <Td>
                         <button
                           className="btn-secondary px-3 py-2 text-xs"
-                          onClick={() => {
-                            setProduct(toProductForm(item));
-                            setProductOpen(true);
-                            setBulkOpen(false);
-                          }}
+                          onClick={() => openProductEditor(item)}
                           type="button"
                         >
                           <Pencil className="h-3.5 w-3.5" />
@@ -510,19 +722,47 @@ export default function InventoryPage() {
           </section>
 
           <section className="panel overflow-hidden">
-            <div className="border-b border-[var(--line)] p-5"><h2>{copy({ en: "Stock change history", zh: "库存变动历史" })}</h2></div>
+            <div className="border-b border-[var(--line)] p-5">
+              <h2>{copy({ en: "Stock change history", zh: "库存变动历史" })}</h2>
+              <p className="mt-1 text-sm font-semibold text-[var(--muted)]">
+                {copy({
+                  en: "Manual entries can be edited. Invoice-generated entries remain read-only.",
+                  zh: "手动录入的记录可以修改；Invoice 自动生成的记录保持只读。"
+                })}
+              </p>
+            </div>
             {movements.length ? (
               <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead><tr><Th>{copy({ en: "Date", zh: "日期" })}</Th><Th>{copy({ en: "Product", zh: "商品" })}</Th><Th>{copy({ en: "Reason", zh: "原因" })}</Th><Th>{copy({ en: "Quantity", zh: "数量" })}</Th><Th>{copy({ en: "Reference", zh: "参考编号" })}</Th></tr></thead>
+                <table className="w-full min-w-[780px] text-left">
+                  <thead><tr><Th>{copy({ en: "Date", zh: "日期" })}</Th><Th>{copy({ en: "Product", zh: "商品" })}</Th><Th>{copy({ en: "Reason", zh: "原因" })}</Th><Th>{copy({ en: "Quantity", zh: "数量" })}</Th><Th>{copy({ en: "Reference", zh: "参考编号" })}</Th><Th>{copy({ en: "Actions", zh: "操作" })}</Th></tr></thead>
                   <tbody>{movements.map((item) => {
                     const matchedProduct = products.find((productRow) => productRow.id === item.product_id);
+                    const editable =
+                      Boolean(matchedProduct) &&
+                      (!item.source_type || item.source_type === "manual") &&
+                      manualMovementTypes.includes(item.movement_type);
                     return (
                       <tr className="border-t border-[var(--line)]" key={item.id}>
                         <Td>{item.movement_date}</Td><Td>{matchedProduct?.name ?? copy({ en: "Deleted product", zh: "已删除商品" })}</Td>
                         <Td>{movementLabels[item.movement_type]}</Td>
                         <Td><span className={item.quantity_delta < 0 ? "font-black text-[var(--rose)]" : "font-black text-[var(--mint-dark)]"}>{item.quantity_delta > 0 ? "+" : ""}{item.quantity_delta}</span></Td>
                         <Td>{item.reference || "—"}</Td>
+                        <Td>
+                          {editable ? (
+                            <button
+                              className="btn-secondary px-3 py-2 text-xs"
+                              onClick={() => openMovementEditor(item)}
+                              type="button"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                              {copy({ en: "Edit", zh: "修改" })}
+                            </button>
+                          ) : (
+                            <span className="text-xs font-bold text-[var(--muted)]">
+                              {copy({ en: "Read only", zh: "只读" })}
+                            </span>
+                          )}
+                        </Td>
                       </tr>
                     );
                   })}</tbody>
@@ -530,6 +770,56 @@ export default function InventoryPage() {
               </div>
             ) : <Empty>{copy({ en: "No stock changes yet.", zh: "暂时没有库存变动。" })}</Empty>}
           </section>
+
+          {deleteTarget ? (
+            <div
+              className="fixed inset-0 z-[80] grid place-items-center bg-[#17211b]/45 p-4 backdrop-blur-sm"
+              onMouseDown={(event) => {
+                if (event.target === event.currentTarget && !deletingProduct) {
+                  setDeleteTarget(null);
+                }
+              }}
+            >
+              <div
+                aria-labelledby="delete-product-title"
+                aria-modal="true"
+                className="w-full max-w-md rounded-lg bg-white p-6 shadow-2xl"
+                role="dialog"
+              >
+                <h2 className="text-xl font-black" id="delete-product-title">
+                  {copy({ en: "Delete this product?", zh: "确认删除这个商品？" })}
+                </h2>
+                <p className="mt-2 font-black">{deleteTarget.sku} · {deleteTarget.name}</p>
+                <p className="mt-3 text-sm leading-6 text-[var(--muted)]">
+                  {copy({
+                    en: "The product will disappear from Inventory and future invoice searches. Existing invoices and stock history will be preserved.",
+                    zh: "删除后，该商品将不再出现在库存和之后的 Invoice 搜索中；已有 Invoice 和库存历史仍会保留。"
+                  })}
+                </p>
+                <div className="mt-5 flex justify-end gap-2">
+                  <button
+                    className="btn-secondary"
+                    disabled={deletingProduct}
+                    onClick={() => setDeleteTarget(null)}
+                    type="button"
+                  >
+                    {copy({ en: "Cancel", zh: "取消" })}
+                  </button>
+                  <button
+                    className="btn-primary bg-[var(--rose)] hover:bg-[#a6293b]"
+                    disabled={deletingProduct}
+                    onClick={confirmDeleteProduct}
+                    type="button"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    {deletingProduct
+                      ? copy({ en: "Deleting...", zh: "删除中..." })
+                      : copy({ en: "Delete product", zh: "删除商品" })}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </main>
       </AppShell>
     </ProtectedRoute>

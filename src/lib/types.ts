@@ -123,6 +123,7 @@ export type InventoryProduct = {
   gst_enabled: boolean;
   track_inventory: boolean;
   is_active: boolean;
+  deleted_at?: string | null;
   created_at: string;
   updated_at: string;
 };

@@ -54,6 +54,7 @@ Only variables prefixed with `NEXT_PUBLIC_` reach the browser. `SUPABASE_SERVICE
 6. Run [`supabase/migrations/20260722_journey_business_percentage.sql`](./supabase/migrations/20260722_journey_business_percentage.sql) to add partial business-use allocation for vehicle journeys.
 7. Run [`supabase/migrations/20260723_payment_ledger_inventory.sql`](./supabase/migrations/20260723_payment_ledger_inventory.sql) to add payment/reversal ledgers, credit notes, products and auditable inventory movements.
 8. Run [`supabase/migrations/20260728_expired_returns_inventory.sql`](./supabase/migrations/20260728_expired_returns_inventory.sql) so negative return lines remain visible on invoices without deducting sellable stock a second time.
+9. Run [`supabase/migrations/20260729_inventory_editing.sql`](./supabase/migrations/20260729_inventory_editing.sql) to support correcting manual stock changes and safely deleting products without removing their historical references.
 5. In Authentication → Providers, enable Email.
 6. In Authentication → URL Configuration, set the production Site URL and add both `http://localhost:3000/**` and the production `https://...vercel.app/**` redirect URLs. Password reset links return to `/reset-password`.
 7. In Project Settings → API Keys, copy the project URL, publishable/anon key and server-only service role key into `.env.local`.

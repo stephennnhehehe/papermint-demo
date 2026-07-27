@@ -652,12 +652,21 @@ export async function fetchInventoryProducts(userId: string): Promise<InventoryP
   if (shouldUseLocalStore(userId)) return (await import("./local-store")).localFetchInventoryProducts(userId);
   const { data, error } = await getSupabaseClient().from("inventory_products").select("*").eq("user_id", userId).order("name");
   if (error) throw error;
-  return (data ?? []) as InventoryProduct[];
+  return ((data ?? []) as InventoryProduct[]).filter((item) => !item.deleted_at);
 }
 
 export async function upsertInventoryProduct(userId: string, product: Partial<InventoryProduct> & Pick<InventoryProduct, "name" | "sku">) {
   if (shouldUseLocalStore(userId)) return (await import("./local-store")).localUpsertInventoryProduct(userId, product);
   const { data, error } = await getSupabaseClient().from("inventory_products").upsert({ ...product, user_id: userId, updated_at: new Date().toISOString() }).select("*").single();
+  if (error) throw error;
+  return data as InventoryProduct;
+}
+
+export async function deleteInventoryProduct(userId: string, productId: string) {
+  if (shouldUseLocalStore(userId)) return (await import("./local-store")).localDeleteInventoryProduct(userId, productId);
+  const { data, error } = await getSupabaseClient().rpc("delete_inventory_product", {
+    p_product_id: productId
+  });
   if (error) throw error;
   return data as InventoryProduct;
 }
@@ -672,6 +681,32 @@ export async function fetchInventoryMovements(userId: string): Promise<Inventory
 export async function recordInventoryMovement(userId: string, movement: Omit<InventoryMovement, "id" | "user_id" | "created_at">) {
   if (shouldUseLocalStore(userId)) return (await import("./local-store")).localRecordInventoryMovement(userId, movement);
   const { data, error } = await getSupabaseClient().rpc("record_inventory_movement", { p_product_id: movement.product_id, p_movement_type: movement.movement_type, p_quantity_delta: movement.quantity_delta, p_unit_cost: movement.unit_cost, p_movement_date: movement.movement_date, p_reference: movement.reference, p_notes: movement.notes, p_source_type: movement.source_type, p_source_id: movement.source_id });
+  if (error) throw error;
+  return data as InventoryMovement;
+}
+
+export async function replaceInventoryMovement(
+  userId: string,
+  movementId: string,
+  movement: Omit<InventoryMovement, "id" | "user_id" | "created_at">
+) {
+  if (shouldUseLocalStore(userId)) {
+    return (await import("./local-store")).localReplaceInventoryMovement(
+      userId,
+      movementId,
+      movement
+    );
+  }
+  const { data, error } = await getSupabaseClient().rpc("replace_inventory_movement", {
+    p_movement_id: movementId,
+    p_product_id: movement.product_id,
+    p_movement_type: movement.movement_type,
+    p_quantity_delta: movement.quantity_delta,
+    p_unit_cost: movement.unit_cost,
+    p_movement_date: movement.movement_date,
+    p_reference: movement.reference,
+    p_notes: movement.notes
+  });
   if (error) throw error;
   return data as InventoryMovement;
 }
