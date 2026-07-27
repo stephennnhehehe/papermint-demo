@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Check, Copy, Download, Eye, EyeOff, ListPlus, Loader2, LockKeyhole, Plus, Printer, Save, Trash2, Upload } from "lucide-react";
+import { Check, ChevronDown, Copy, Download, Eye, EyeOff, GripVertical, ListPlus, Loader2, LockKeyhole, Plus, Printer, Save, Trash2, Upload } from "lucide-react";
 import { pdf } from "@react-pdf/renderer";
 import { AppShell } from "@/components/app/AppShell";
 import { ProtectedRoute } from "@/components/app/ProtectedRoute";
@@ -31,6 +31,7 @@ import {
   fetchCustomers,
   fetchDocument,
   fetchDocuments,
+  fetchInventoryProducts,
   fetchProfile,
   saveDocument,
   upsertCompanyProfile,
@@ -45,11 +46,13 @@ import type {
   DocumentStatus,
   DocumentType,
   LineItem,
+  InventoryProduct,
   PaperDocument,
   Party
 } from "@/lib/types";
 import { DocumentPreview } from "./DocumentPreview";
 import { StatusBadge } from "./StatusBadge";
+import { InvoiceLedger } from "./InvoiceLedger";
 import { PaperMintPdf } from "../pdf/DocumentPdf";
 
 const statuses: DocumentStatus[] = ["draft", "sent", "paid", "overdue", "cancelled"];
@@ -122,6 +125,7 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
   const [paper, setPaper] = useState<PaperDocument | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [companyProfiles, setCompanyProfiles] = useState<CompanyRecord[]>([]);
+  const [products, setProducts] = useState<InventoryProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveConfirmed, setSaveConfirmed] = useState(false);
@@ -156,14 +160,16 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
       setLoading(true);
       setMessage("");
       try {
-        const [customerRows, profileRow, companyRows, documentRows] = await Promise.all([
+        const [customerRows, profileRow, companyRows, documentRows, productRows] = await Promise.all([
           fetchCustomers(currentUser.id),
           fetchProfile(currentUser.id),
           fetchCompanyProfiles(currentUser.id),
-          fetchDocuments(currentUser.id)
+          fetchDocuments(currentUser.id),
+          fetchInventoryProducts(currentUser.id)
         ]);
         if (!active) return;
         setCustomers(customerRows);
+        setProducts(productRows.filter((item) => item.is_active));
         const defaultProfile = profileFromRow(profileRow);
         const fallbackCompany = fallbackCompanyRecord(currentUser.id, defaultProfile);
         const mergedCompanyRows =
@@ -235,6 +241,33 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
 
   function updatePaper(patch: Partial<PaperDocument>) {
     setPaper((current) => (current ? { ...current, ...patch } : current));
+  }
+
+  async function handleStatusSelection(status: DocumentStatus) {
+    if (!paper || !user) return;
+    if (status === "paid") {
+      showToast(copy({ en: "Record payment in the Invoice payments section below. Paid status is automatic.", zh: "请在页面下方“发票收款”中记录款项，Paid 状态会自动更新。" }), "error");
+      return;
+    }
+    if (!documentId) {
+      updatePaper({ status });
+      return;
+    }
+    setSaving(true);
+    try {
+      const saved = await saveDocument(user.id, { ...paper, status });
+      setPaper(saved);
+      if (draftKey) window.localStorage.removeItem(draftKey);
+      showToast(copy({
+        en: status === "sent" ? "Invoice marked Sent. Linked inventory was deducted automatically." : `Status changed to ${status}.`,
+        zh: status === "sent" ? "发票已标记为 Sent，关联商品库存已自动扣减。" : `状态已改为 ${status}。`
+      }));
+      await refreshBilling();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Unable to update status.", "error");
+    } finally {
+      setSaving(false);
+    }
   }
 
   function updateParty(kind: "company" | "billTo" | "shipTo", patch: Partial<Party>) {
@@ -492,7 +525,9 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
 
                 <div className="grid gap-3">
                   <SegmentedType value={paper.type} onChange={(type) => updatePaper({ type, title: type === "invoice" ? "TAX INVOICE" : "QUOTE" })} />
-                  <Select label={t("status")} value={paper.status} onChange={(value) => updatePaper({ status: value as DocumentStatus })} options={statuses.map((status) => ({ label: status, value: status }))} />
+                  <Select label={t("status")} value={paper.status} onChange={(value) => {
+                    void handleStatusSelection(value as DocumentStatus);
+                  }} options={statuses.map((status) => ({ label: status, value: status }))} />
                   <Field label={copy({ en: "Number", zh: "单据编号", vi: "Số chứng từ", ar: "رقم المستند" })} value={paper.number} onChange={(value) => updatePaper({ number: sanitizeDocumentNumber(value) })} />
                   <Field label={copy({ en: "Title", zh: "标题", vi: "Tiêu đề", ar: "العنوان" })} value={paper.title} onChange={(value) => updatePaper({ title: value })} />
                 </div>
@@ -637,6 +672,7 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
                       item={item}
                       key={item.id}
                       language={language}
+                      products={products}
                       onChange={(patch) => updateLineItem(item.id, patch)}
                       onDelete={() => updatePaper({ lineItems: paper.lineItems.filter((candidate) => candidate.id !== item.id) })}
                     />
@@ -725,6 +761,17 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
             </div>
           </form>
         )}
+        {user && documentId && paper?.id && paper.type === "invoice" && totals ? (
+          <InvoiceLedger
+            document={paper}
+            onChanged={async () => {
+              const refreshed = await fetchDocument(user.id, paper.id!);
+              if (refreshed) setPaper(refreshed);
+            }}
+            total={totals.total}
+            userId={user.id}
+          />
+        ) : null}
         {paper && showPreview ? (
           <div
             className="fixed inset-0 z-40 overflow-y-auto bg-[#17211b]/55 p-4 backdrop-blur-sm"
@@ -825,6 +872,7 @@ function LineItemEditor({
   index,
   canDelete,
   language,
+  products,
   onChange,
   onDelete
 }: {
@@ -832,32 +880,46 @@ function LineItemEditor({
   index: number;
   canDelete: boolean;
   language: Language;
+  products: InventoryProduct[];
   onChange: (patch: Partial<LineItem>) => void;
   onDelete: () => void;
 }) {
   const copy = <T,>(values: { en: T; zh?: T; vi?: T; ar?: T }) => pickLanguage(language, values);
+  const [advancedOpen, setAdvancedOpen] = useState(Boolean(item.productId || item.discount.value || item.gstEnabled === false));
   return (
-    <article className="rounded-lg border border-[var(--line)] bg-white/75 p-3">
-      <div className="mb-2 flex items-center gap-2">
-        <span className="shrink-0 rounded-md bg-[#eef4ef] px-2 py-1 text-[11px] font-black text-[var(--muted)]">
-          #{index + 1}
+    <article className="overflow-hidden rounded-lg border border-[var(--line)] bg-white/80 shadow-[0_1px_2px_rgba(23,33,27,0.04)]">
+      <div className="flex items-center gap-2 border-b border-[var(--line)] bg-[#f8faf7] px-3 py-2">
+        <GripVertical className="h-4 w-4 shrink-0 text-[var(--muted)]" />
+        <span className="shrink-0 text-xs font-black text-[var(--muted)]">
+          {copy({ en: `Item ${index + 1}`, zh: `项目 ${index + 1}`, vi: `Mục ${index + 1}`, ar: `البند ${index + 1}` })}
         </span>
-        <div className="grid min-w-0 flex-1 gap-2 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.2fr)]">
+        <span className="min-w-0 flex-1 truncate text-sm font-bold">
+          {item.description || copy({ en: "Untitled item", zh: "未命名项目" })}
+        </span>
+        <button className="btn-secondary px-2.5 py-1.5 text-xs" onClick={() => setAdvancedOpen((open) => !open)} type="button">
+          {copy({ en: "More", zh: "更多" })}
+          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${advancedOpen ? "rotate-180" : ""}`} />
+        </button>
+        <button className="icon-btn h-8 w-8 text-[var(--rose)]" disabled={!canDelete} onClick={onDelete} title={copy({ en: "Delete item", zh: "删除项目" })} type="button">
+          <Trash2 className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="grid items-start gap-2 p-3 sm:grid-cols-2 lg:grid-cols-[minmax(260px,1fr)_86px_120px_130px]">
+        <div className="grid min-w-0 gap-2">
           <AutoGrowTextArea
             label={copy({ en: "Description", zh: "描述", vi: "Mô tả", ar: "الوصف" })}
-            maxHeight={112}
+            maxHeight={72}
             onChange={(value) => onChange({ description: value })}
             value={item.description}
           />
           <AutoGrowTextArea
             label={copy({ en: "Details", zh: "明细", vi: "Chi tiết", ar: "التفاصيل" })}
-            maxHeight={144}
+            maxHeight={72}
             onChange={(value) => onChange({ details: value })}
             value={item.details}
           />
         </div>
-      </div>
-      <div className="grid grid-cols-2 items-end gap-2 sm:grid-cols-3 lg:grid-cols-[86px_120px_105px_minmax(170px,1fr)_120px_38px]">
         <DecimalInput
           label={copy({ en: "Qty", zh: "数量", vi: "Số lượng", ar: "الكمية" })}
           onChange={(quantity) => onChange({ quantity })}
@@ -869,33 +931,53 @@ function LineItemEditor({
           onChange={(unitPrice) => onChange({ unitPrice })}
           value={item.unitPrice}
         />
-        <label>
-          <span className="label">GST</span>
-          <span className="field flex items-center justify-between gap-2 px-2 py-2">
-            <span>{item.gstEnabled === false ? copy({ en: "No GST", zh: "无 GST", vi: "Không GST", ar: "بدون GST" }) : "GST"}</span>
-            <input
-              className="h-4 w-4 accent-[var(--mint-dark)]"
-              checked={item.gstEnabled !== false}
-              onChange={(event) => onChange({ gstEnabled: event.target.checked })}
-              type="checkbox"
-            />
-          </span>
-        </label>
-        <DiscountEditor compactSelect discount={item.discount} label={copy({ en: "Item discount", zh: "项目折扣", vi: "Giảm giá hạng mục", ar: "خصم البند" })} onChange={(discount) => onChange({ discount })} />
         <div>
           <span className="label">{copy({ en: "Amount", zh: "金额", vi: "Thành tiền", ar: "المبلغ" })}</span>
-          <div className={`rounded-lg border border-[var(--line)] bg-[#f8faf7] px-3 py-2 text-right font-black ${lineTotal(item) < 0 ? "text-[var(--rose)]" : ""}`}>
+          <div className={`rounded-lg border border-[var(--line)] bg-[#f8faf7] px-3 py-2 text-right text-sm font-black ${lineTotal(item) < 0 ? "text-[var(--rose)]" : ""}`}>
             {formatAud(lineTotal(item))}
           </div>
         </div>
-        <button className="icon-btn h-[39px] w-[38px] text-[var(--rose)]" disabled={!canDelete} onClick={onDelete} title="Delete item" type="button">
-          <Trash2 className="h-4 w-4" />
-        </button>
       </div>
-      {item.unitPrice < 0 ? (
-        <p className="mt-2 text-xs font-bold text-[var(--rose)]">
-          {copy({ en: "Recorded as a return / loss adjustment when this invoice is marked Paid.", zh: "Invoice 标记为已付款后，此项目会记入退货／损耗记录。", vi: "Được ghi là điều chỉnh trả hàng / tổn thất khi hóa đơn đã thanh toán.", ar: "يسجل كتعديل مرتجع / خسارة عند تعليم الفاتورة كمدفوعة." })}
-        </p>
+
+      {advancedOpen ? (
+        <div className="grid gap-2 border-t border-[var(--line)] bg-[#fbfcfa] px-3 py-3 sm:grid-cols-2 lg:grid-cols-[minmax(240px,1fr)_130px_180px]">
+          {products.length ? (
+            <label>
+              <span className="label">{copy({ en: "Inventory product (optional)", zh: "库存商品（可选）" })}</span>
+              <select className="field py-2 text-sm" value={item.productId ?? ""} onChange={(event) => {
+                const selected = products.find((product) => product.id === event.target.value);
+                onChange(selected
+                  ? { productId: selected.id, description: selected.name, details: selected.description ?? item.details, unitPrice: selected.sale_price, gstEnabled: selected.gst_enabled }
+                  : { productId: null });
+              }}>
+                <option value="">{copy({ en: "Manual line item", zh: "普通项目（不关联库存）" })}</option>
+                {products.map((product) => (
+                  <option key={product.id} value={product.id}>
+                    {product.sku} · {product.name} ({product.quantity_on_hand} {copy({ en: "on hand", zh: "库存" })})
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : <div />}
+          <label>
+            <span className="label">GST</span>
+            <span className="field flex items-center justify-between gap-2 px-2 py-2">
+              <span>{item.gstEnabled === false ? copy({ en: "No GST", zh: "无 GST" }) : "GST"}</span>
+              <input
+                className="h-4 w-4 accent-[var(--mint-dark)]"
+                checked={item.gstEnabled !== false}
+                onChange={(event) => onChange({ gstEnabled: event.target.checked })}
+                type="checkbox"
+              />
+            </span>
+          </label>
+          <DiscountEditor compactSelect discount={item.discount} label={copy({ en: "Item discount", zh: "项目折扣" })} onChange={(discount) => onChange({ discount })} />
+          {item.unitPrice < 0 ? (
+            <p className="text-xs font-bold text-[var(--rose)] sm:col-span-2 lg:col-span-3">
+              {copy({ en: "For customer returns, use Refund / adjustment below so the invoice balance and inventory stay in sync.", zh: "客户退货请使用页面下方的“退货、退款或折让”，系统会同时更新应付余额和库存。" })}
+            </p>
+          ) : null}
+        </div>
       ) : null}
     </article>
   );

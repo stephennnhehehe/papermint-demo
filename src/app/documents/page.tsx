@@ -170,6 +170,10 @@ export default function DocumentsPage() {
 
   async function handleStatusChange(row: DocumentRow, status: DocumentStatus) {
     if (!user) return;
+    if (status === "paid") {
+      showToast(pickLanguage(language, { en: "Open the invoice and record payment in its Payment ledger. Paid status is automatic.", zh: "请打开发票并在 Payment ledger 记录付款，Paid 状态会自动更新。", vi: "Mở hóa đơn và ghi khoản thanh toán trong sổ; trạng thái Paid là tự động.", ar: "افتح الفاتورة وسجّل الدفعة في سجلها؛ حالة الدفع تلقائية." }), "error");
+      return;
+    }
     setBusyAction(`status:${row.id}`);
     try {
       const updated = await updateDocumentStatus(user.id, row.id, status);
@@ -183,7 +187,7 @@ export default function DocumentsPage() {
             ...draft,
             status,
             sentAt: status === "sent" ? draft.sentAt ?? updated.sent_at : draft.sentAt,
-            paidAt: status === "paid" ? updated.paid_at : null
+            paidAt: null
           }));
         } catch {
           window.localStorage.removeItem(draftKey);
@@ -342,7 +346,7 @@ export default function DocumentsPage() {
                           <span className="font-black">{row.number}</span>
                         </Link>
                         <div className="mt-1 flex flex-wrap gap-1">
-                          {row.sent_at ? <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-black text-blue-700">SENT</span> : null}
+                          {effectiveStatus(row) === "sent" ? <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-black text-blue-700">SENT</span> : null}
                           {row.first_viewed_at ? <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-black text-amber-700">VIEWED</span> : null}
                           {row.accepted_at ? <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-black text-emerald-700">ACCEPTED</span> : null}
                         </div>

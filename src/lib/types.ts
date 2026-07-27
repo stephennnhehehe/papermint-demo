@@ -68,12 +68,87 @@ export type CompanyRecord = {
 
 export type LineItem = {
   id: string;
+  productId?: string | null;
   description: string;
   details: string;
   quantity: number;
   unitPrice: number;
   gstEnabled?: boolean;
   discount: Discount;
+};
+
+export type InvoicePayment = {
+  id: string;
+  user_id: string;
+  document_id: string;
+  payment_account_id: string | null;
+  entry_type: "payment" | "reversal";
+  amount: number;
+  payment_date: string;
+  reference: string | null;
+  notes: string | null;
+  reverses_payment_id: string | null;
+  created_at: string;
+};
+
+export type CreditNote = {
+  id: string;
+  user_id: string;
+  document_id: string;
+  number: string;
+  issue_date: string;
+  description: string;
+  reason: string;
+  total: number;
+  gst_amount: number;
+  status: "issued" | "void";
+  inventory_product_id: string | null;
+  inventory_quantity: number | null;
+  created_at: string;
+};
+
+export type InventoryProduct = {
+  id: string;
+  user_id: string;
+  company_profile_id: string | null;
+  sku: string;
+  name: string;
+  description: string | null;
+  unit: string;
+  sale_price: number;
+  average_cost: number;
+  quantity_on_hand: number;
+  reorder_level: number;
+  gst_enabled: boolean;
+  track_inventory: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type InventoryMovementType =
+  | "opening"
+  | "purchase"
+  | "sale"
+  | "customer_return"
+  | "supplier_return"
+  | "loss"
+  | "adjustment"
+  | "reversal";
+
+export type InventoryMovement = {
+  id: string;
+  user_id: string;
+  product_id: string;
+  movement_type: InventoryMovementType;
+  quantity_delta: number;
+  unit_cost: number;
+  movement_date: string;
+  reference: string | null;
+  notes: string | null;
+  source_type: string | null;
+  source_id: string | null;
+  created_at: string;
 };
 
 export type CompanyProfile = {

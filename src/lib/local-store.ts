@@ -11,6 +11,10 @@ import type {
   DocumentStatus,
   Expense,
   ExpenseReceipt,
+  CreditNote,
+  InventoryMovement,
+  InventoryProduct,
+  InvoicePayment,
   PaymentAccount,
   PaperDocument,
   ProfileRow,
@@ -225,7 +229,26 @@ export function localSaveDocument(userId: string, document: PaperDocument): Pape
     updated_at: now()
   };
   writeJson(`documents:${userId}`, [row, ...documents.filter((item) => item.id !== row.id)]);
+  localSyncDocumentInventory(userId, row);
   return documentFromRow(row);
+}
+
+function localSyncDocumentInventory(userId: string, document: DocumentRow) {
+  if (document.type !== "invoice") return;
+  const movements = localFetchInventoryMovements(userId);
+  const active = ["sent", "paid", "overdue"].includes(document.status);
+  const productIds = [...new Set([
+    ...document.line_items.map((item) => item.productId).filter(Boolean),
+    ...movements.filter((movement) => movement.source_type === "document" && movement.source_id === document.id).map((movement) => movement.product_id)
+  ])] as string[];
+  for (const productId of productIds) {
+    const existing = movements.filter((movement) => movement.source_type === "document" && movement.source_id === document.id && movement.product_id === productId).reduce((sum, movement) => sum + movement.quantity_delta, 0);
+    const desiredQuantity = document.line_items.filter((item) => item.productId === productId).reduce((sum, item) => sum + Math.max(0, Number(item.quantity)), 0);
+    const desired = active ? -desiredQuantity : 0;
+    const difference = desired - existing;
+    if (Math.abs(difference) < 0.0005) continue;
+    localRecordInventoryMovement(userId, { product_id: productId, movement_type: difference < 0 ? "sale" : "reversal", quantity_delta: difference, unit_cost: 0, movement_date: document.issue_date, reference: document.number, notes: "Automatically synced from invoice", source_type: "document", source_id: document.id });
+  }
 }
 
 export function localDeleteDocument(userId: string, id: string) {
@@ -252,6 +275,7 @@ export function localUpdateDocumentStatus(
     updated_at: timestamp
   };
   writeJson(`documents:${userId}`, [updated, ...documents.filter((document) => document.id !== id)]);
+  localSyncDocumentInventory(userId, updated);
   return updated;
 }
 
@@ -358,6 +382,138 @@ export function localDeletePaymentAccount(userId: string, id: string) {
   writeJson(`expenses:${userId}`, localFetchExpenses(userId).map((expense) =>
     expense.payment_account_id === id ? { ...expense, payment_account_id: null } : expense
   ));
+}
+
+export function localFetchInvoicePayments(userId: string, documentId: string) {
+  return readJson<InvoicePayment[]>(`invoice-payments:${userId}`, [])
+    .filter((item) => item.document_id === documentId)
+    .sort((a, b) => b.payment_date.localeCompare(a.payment_date) || b.created_at.localeCompare(a.created_at));
+}
+
+export function localRecordInvoicePayment(userId: string, payment: Omit<InvoicePayment, "id" | "user_id" | "entry_type" | "reverses_payment_id" | "created_at">) {
+  const rows = readJson<InvoicePayment[]>(`invoice-payments:${userId}`, []);
+  const saved: InvoicePayment = { ...payment, id: crypto.randomUUID(), user_id: userId, entry_type: "payment", reverses_payment_id: null, amount: Math.abs(Number(payment.amount)), created_at: now() };
+  writeJson(`invoice-payments:${userId}`, [saved, ...rows]);
+  localRefreshPaymentStatus(userId, payment.document_id);
+  return saved;
+}
+
+export function localReverseInvoicePayment(userId: string, paymentId: string, notes = "") {
+  const rows = readJson<InvoicePayment[]>(`invoice-payments:${userId}`, []);
+  const original = rows.find((item) => item.id === paymentId && item.entry_type === "payment");
+  if (!original) throw new Error("Payment not found.");
+  if (rows.some((item) => item.reverses_payment_id === paymentId)) throw new Error("Payment already reversed.");
+  const reversal: InvoicePayment = { ...original, id: crypto.randomUUID(), entry_type: "reversal", amount: -original.amount, payment_date: new Date().toISOString().slice(0, 10), notes: notes || `Reversal of ${original.reference ?? paymentId}`, reverses_payment_id: paymentId, created_at: now() };
+  writeJson(`invoice-payments:${userId}`, [reversal, ...rows]);
+  localRefreshPaymentStatus(userId, original.document_id);
+  return reversal;
+}
+
+export function localReplaceInvoicePayment(
+  userId: string,
+  paymentId: string,
+  payment: Pick<InvoicePayment, "amount" | "payment_date" | "payment_account_id" | "reference" | "notes">
+) {
+  const original = readJson<InvoicePayment[]>(`invoice-payments:${userId}`, []).find(
+    (item) => item.id === paymentId && item.entry_type === "payment"
+  );
+  if (!original) throw new Error("Payment not found.");
+  localReverseInvoicePayment(userId, paymentId, "Reversed because the payment record was edited.");
+  return localRecordInvoicePayment(userId, {
+    ...payment,
+    document_id: original.document_id
+  });
+}
+
+export function localFetchCreditNotes(userId: string, documentId: string) {
+  return readJson<CreditNote[]>(`credit-notes:${userId}`, []).filter((item) => item.document_id === documentId).sort((a, b) => b.issue_date.localeCompare(a.issue_date));
+}
+
+export function localIssueCreditNote(userId: string, note: Omit<CreditNote, "id" | "user_id" | "number" | "status" | "created_at">) {
+  const rows = readJson<CreditNote[]>(`credit-notes:${userId}`, []);
+  const saved: CreditNote = { ...note, id: crypto.randomUUID(), user_id: userId, number: `CN${new Date().getFullYear()}${String(rows.length + 1).padStart(5, "0")}`, status: "issued", total: Math.abs(Number(note.total)), gst_amount: Math.abs(Number(note.gst_amount)), created_at: now() };
+  writeJson(`credit-notes:${userId}`, [saved, ...rows]);
+  if (saved.inventory_product_id && Number(saved.inventory_quantity) > 0) {
+    localRecordInventoryMovement(userId, { product_id: saved.inventory_product_id, movement_type: "customer_return", quantity_delta: Number(saved.inventory_quantity), unit_cost: 0, movement_date: saved.issue_date, reference: saved.number, notes: saved.reason, source_type: "credit_note", source_id: saved.id });
+  }
+  localRefreshPaymentStatus(userId, note.document_id);
+  return saved;
+}
+
+export function localVoidCreditNote(userId: string, creditNoteId: string) {
+  const rows = readJson<CreditNote[]>(`credit-notes:${userId}`, []);
+  const existing = rows.find((item) => item.id === creditNoteId && item.status === "issued");
+  if (!existing) throw new Error("Credit note not found or already voided.");
+  const updated: CreditNote = { ...existing, status: "void" };
+  writeJson(`credit-notes:${userId}`, [updated, ...rows.filter((item) => item.id !== creditNoteId)]);
+  if (existing.inventory_product_id && Number(existing.inventory_quantity) > 0) {
+    localRecordInventoryMovement(userId, {
+      product_id: existing.inventory_product_id,
+      movement_type: "reversal",
+      quantity_delta: -Number(existing.inventory_quantity),
+      unit_cost: 0,
+      movement_date: new Date().toISOString().slice(0, 10),
+      reference: existing.number,
+      notes: "Credit note voided",
+      source_type: "credit_note_void",
+      source_id: existing.id
+    });
+  }
+  localRefreshPaymentStatus(userId, existing.document_id);
+  return updated;
+}
+
+export function localReplaceCreditNote(
+  userId: string,
+  creditNoteId: string,
+  note: Omit<CreditNote, "id" | "user_id" | "number" | "status" | "created_at" | "document_id">
+) {
+  const original = readJson<CreditNote[]>(`credit-notes:${userId}`, []).find((item) => item.id === creditNoteId);
+  if (!original) throw new Error("Credit note not found.");
+  localVoidCreditNote(userId, creditNoteId);
+  return localIssueCreditNote(userId, { ...note, document_id: original.document_id });
+}
+
+function localRefreshPaymentStatus(userId: string, documentId: string) {
+  const documents = localFetchDocuments(userId);
+  const document = documents.find((item) => item.id === documentId);
+  if (!document) return;
+  const paid = localFetchInvoicePayments(userId, documentId).reduce((sum, item) => sum + Number(item.amount), 0);
+  const credited = localFetchCreditNotes(userId, documentId).filter((item) => item.status === "issued").reduce((sum, item) => sum + Number(item.total), 0);
+  const settled = paid + credited >= Math.max(0, Number(document.totals.total)) - 0.005;
+  const updated = { ...document, status: settled ? "paid" as const : (document.status === "paid" ? "sent" as const : document.status), paid_at: settled ? document.paid_at ?? now() : null, updated_at: now() };
+  writeJson(`documents:${userId}`, [updated, ...documents.filter((item) => item.id !== documentId)]);
+}
+
+export function localFetchInventoryProducts(userId: string) {
+  return readJson<InventoryProduct[]>(`inventory-products:${userId}`, []).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export function localUpsertInventoryProduct(userId: string, product: Partial<InventoryProduct> & Pick<InventoryProduct, "name" | "sku">) {
+  const rows = localFetchInventoryProducts(userId);
+  const existing = rows.find((item) => item.id === product.id);
+  const saved: InventoryProduct = { id: product.id ?? crypto.randomUUID(), user_id: userId, company_profile_id: product.company_profile_id ?? null, sku: product.sku, name: product.name, description: product.description ?? null, unit: product.unit ?? "each", sale_price: Number(product.sale_price) || 0, average_cost: existing?.average_cost ?? (Number(product.average_cost) || 0), quantity_on_hand: existing?.quantity_on_hand ?? 0, reorder_level: Number(product.reorder_level) || 0, gst_enabled: product.gst_enabled ?? true, track_inventory: product.track_inventory ?? true, is_active: product.is_active ?? true, created_at: existing?.created_at ?? now(), updated_at: now() };
+  writeJson(`inventory-products:${userId}`, [saved, ...rows.filter((item) => item.id !== saved.id)]);
+  return saved;
+}
+
+export function localFetchInventoryMovements(userId: string) {
+  return readJson<InventoryMovement[]>(`inventory-movements:${userId}`, []).sort((a, b) => b.movement_date.localeCompare(a.movement_date) || b.created_at.localeCompare(a.created_at));
+}
+
+export function localRecordInventoryMovement(userId: string, movement: Omit<InventoryMovement, "id" | "user_id" | "created_at">) {
+  const products = localFetchInventoryProducts(userId);
+  const product = products.find((item) => item.id === movement.product_id);
+  if (!product) throw new Error("Product not found.");
+  const delta = Number(movement.quantity_delta);
+  const cost = Math.max(0, Number(movement.unit_cost));
+  const nextQty = product.quantity_on_hand + delta;
+  const nextAverage = delta > 0 && cost > 0 && nextQty > 0 ? ((product.quantity_on_hand * product.average_cost) + (delta * cost)) / nextQty : product.average_cost;
+  const updated = { ...product, quantity_on_hand: nextQty, average_cost: nextAverage, updated_at: now() };
+  writeJson(`inventory-products:${userId}`, [updated, ...products.filter((item) => item.id !== product.id)]);
+  const saved: InventoryMovement = { ...movement, quantity_delta: delta, unit_cost: cost, id: crypto.randomUUID(), user_id: userId, created_at: now() };
+  writeJson(`inventory-movements:${userId}`, [saved, ...localFetchInventoryMovements(userId)]);
+  return saved;
 }
 
 export function localFetchVehicles(userId: string): Vehicle[] {

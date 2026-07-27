@@ -28,6 +28,10 @@ import type {
   DocumentStatus,
   Expense,
   ExpenseReceipt,
+  CreditNote,
+  InventoryMovement,
+  InventoryProduct,
+  InvoicePayment,
   PaymentAccount,
   PaperDocument,
   ProfileRow,
@@ -261,6 +265,8 @@ export async function saveDocument(userId: string, document: PaperDocument): Pro
   const { data, error } = await supabase.from("documents").upsert(payload).select("*").single();
 
   if (error) throw error;
+  const { error: inventoryError } = await supabase.rpc("sync_document_inventory", { p_document_id: data.id });
+  if (inventoryError) throw inventoryError;
   return documentFromRow(data as DocumentRow);
 }
 
@@ -293,6 +299,8 @@ export async function updateDocumentStatus(
   const { data, error } = await getSupabaseClient().from("documents").update(payload)
     .eq("id", id).eq("user_id", userId).select("*").single();
   if (error) throw error;
+  const { error: inventoryError } = await getSupabaseClient().rpc("sync_document_inventory", { p_document_id: id });
+  if (inventoryError) throw inventoryError;
   return data as DocumentRow;
 }
 
@@ -550,4 +558,120 @@ export async function saveReminderSettings(userId: string, settings: Pick<Remind
   }
   const { error } = await getSupabaseClient().from("reminder_settings").upsert({ user_id: userId, ...settings, updated_at: new Date().toISOString() });
   if (error) throw error;
+}
+
+export async function fetchInvoicePayments(userId: string, documentId: string): Promise<InvoicePayment[]> {
+  if (shouldUseLocalStore(userId)) return (await import("./local-store")).localFetchInvoicePayments(userId, documentId);
+  const { data, error } = await getSupabaseClient().from("invoice_payments").select("*").eq("user_id", userId).eq("document_id", documentId).order("payment_date", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as InvoicePayment[];
+}
+
+export async function recordInvoicePayment(userId: string, payment: Omit<InvoicePayment, "id" | "user_id" | "entry_type" | "reverses_payment_id" | "created_at">) {
+  if (shouldUseLocalStore(userId)) return (await import("./local-store")).localRecordInvoicePayment(userId, payment);
+  const { data, error } = await getSupabaseClient().rpc("record_invoice_payment", { p_document_id: payment.document_id, p_amount: payment.amount, p_payment_date: payment.payment_date, p_payment_account_id: payment.payment_account_id, p_reference: payment.reference, p_notes: payment.notes });
+  if (error) throw error;
+  return data as InvoicePayment;
+}
+
+export async function reverseInvoicePayment(userId: string, paymentId: string, notes = "") {
+  if (shouldUseLocalStore(userId)) return (await import("./local-store")).localReverseInvoicePayment(userId, paymentId, notes);
+  const { data, error } = await getSupabaseClient().rpc("reverse_invoice_payment", { p_payment_id: paymentId, p_notes: notes });
+  if (error) throw error;
+  return data as InvoicePayment;
+}
+
+export async function replaceInvoicePayment(
+  userId: string,
+  paymentId: string,
+  payment: Pick<InvoicePayment, "amount" | "payment_date" | "payment_account_id" | "reference" | "notes">
+) {
+  if (shouldUseLocalStore(userId)) {
+    return (await import("./local-store")).localReplaceInvoicePayment(userId, paymentId, payment);
+  }
+  const { data, error } = await getSupabaseClient().rpc("replace_invoice_payment", {
+    p_payment_id: paymentId,
+    p_amount: payment.amount,
+    p_payment_date: payment.payment_date,
+    p_payment_account_id: payment.payment_account_id,
+    p_reference: payment.reference,
+    p_notes: payment.notes
+  });
+  if (error) throw error;
+  return data as InvoicePayment;
+}
+
+export async function fetchCreditNotes(userId: string, documentId: string): Promise<CreditNote[]> {
+  if (shouldUseLocalStore(userId)) return (await import("./local-store")).localFetchCreditNotes(userId, documentId);
+  const { data, error } = await getSupabaseClient().from("credit_notes").select("*").eq("user_id", userId).eq("document_id", documentId).order("issue_date", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as CreditNote[];
+}
+
+export async function issueCreditNote(userId: string, note: Omit<CreditNote, "id" | "user_id" | "number" | "status" | "created_at">) {
+  if (shouldUseLocalStore(userId)) return (await import("./local-store")).localIssueCreditNote(userId, note);
+  const { data, error } = await getSupabaseClient().rpc("issue_credit_note", { p_document_id: note.document_id, p_issue_date: note.issue_date, p_description: note.description, p_reason: note.reason, p_total: note.total, p_gst_amount: note.gst_amount, p_inventory_product_id: note.inventory_product_id, p_inventory_quantity: note.inventory_quantity });
+  if (error) throw error;
+  return data as CreditNote;
+}
+
+export async function voidCreditNote(userId: string, creditNoteId: string) {
+  if (shouldUseLocalStore(userId)) {
+    return (await import("./local-store")).localVoidCreditNote(userId, creditNoteId);
+  }
+  const { data, error } = await getSupabaseClient().rpc("void_credit_note", {
+    p_credit_note_id: creditNoteId
+  });
+  if (error) throw error;
+  return data as CreditNote;
+}
+
+export async function replaceCreditNote(
+  userId: string,
+  creditNoteId: string,
+  note: Omit<CreditNote, "id" | "user_id" | "number" | "status" | "created_at" | "document_id">
+) {
+  if (shouldUseLocalStore(userId)) {
+    return (await import("./local-store")).localReplaceCreditNote(userId, creditNoteId, note);
+  }
+  const { data, error } = await getSupabaseClient().rpc("replace_credit_note", {
+    p_credit_note_id: creditNoteId,
+    p_issue_date: note.issue_date,
+    p_description: note.description,
+    p_reason: note.reason,
+    p_total: note.total,
+    p_gst_amount: note.gst_amount,
+    p_inventory_product_id: note.inventory_product_id,
+    p_inventory_quantity: note.inventory_quantity
+  });
+  if (error) throw error;
+  return data as CreditNote;
+}
+
+export async function fetchInventoryProducts(userId: string): Promise<InventoryProduct[]> {
+  if (shouldUseLocalStore(userId)) return (await import("./local-store")).localFetchInventoryProducts(userId);
+  const { data, error } = await getSupabaseClient().from("inventory_products").select("*").eq("user_id", userId).order("name");
+  if (error) throw error;
+  return (data ?? []) as InventoryProduct[];
+}
+
+export async function upsertInventoryProduct(userId: string, product: Partial<InventoryProduct> & Pick<InventoryProduct, "name" | "sku">) {
+  if (shouldUseLocalStore(userId)) return (await import("./local-store")).localUpsertInventoryProduct(userId, product);
+  const { data, error } = await getSupabaseClient().from("inventory_products").upsert({ ...product, user_id: userId, updated_at: new Date().toISOString() }).select("*").single();
+  if (error) throw error;
+  return data as InventoryProduct;
+}
+
+export async function fetchInventoryMovements(userId: string): Promise<InventoryMovement[]> {
+  if (shouldUseLocalStore(userId)) return (await import("./local-store")).localFetchInventoryMovements(userId);
+  const { data, error } = await getSupabaseClient().from("inventory_movements").select("*").eq("user_id", userId).order("movement_date", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as InventoryMovement[];
+}
+
+export async function recordInventoryMovement(userId: string, movement: Omit<InventoryMovement, "id" | "user_id" | "created_at">) {
+  if (shouldUseLocalStore(userId)) return (await import("./local-store")).localRecordInventoryMovement(userId, movement);
+  const { data, error } = await getSupabaseClient().rpc("record_inventory_movement", { p_product_id: movement.product_id, p_movement_type: movement.movement_type, p_quantity_delta: movement.quantity_delta, p_unit_cost: movement.unit_cost, p_movement_date: movement.movement_date, p_reference: movement.reference, p_notes: movement.notes, p_source_type: movement.source_type, p_source_id: movement.source_id });
+  if (error) throw error;
+  return data as InventoryMovement;
 }

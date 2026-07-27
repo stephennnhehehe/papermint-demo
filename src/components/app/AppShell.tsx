@@ -12,6 +12,7 @@ import {
   Settings,
   ReceiptText,
   Users,
+  Boxes,
 } from "lucide-react";
 import { useAuth } from "./AuthProvider";
 import { useBilling } from "./BillingProvider";
@@ -26,6 +27,7 @@ const nav = [
   { href: "/documents", key: "documents", icon: FileText },
   { href: "/customers", key: "customers", icon: Users },
   { href: "/expenses", key: "expenses", icon: ReceiptText },
+  { href: "/inventory", key: "inventory", icon: Boxes },
   { href: "/settings", key: "settings", icon: Settings },
   { href: "/pricing", key: "pricing", icon: CreditCard }
 ] as const;
@@ -53,18 +55,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen px-4 py-4 sm:px-6 lg:px-8">
-      <header className="mx-auto flex max-w-7xl flex-col gap-3 rounded-lg border border-[var(--line)] bg-white/80 p-3 shadow-sm backdrop-blur md:flex-row md:items-center md:justify-between">
+      <header className="relative z-50 mx-auto flex max-w-[1600px] flex-col gap-3 overflow-visible rounded-lg border border-[var(--line)] bg-white/80 p-3 shadow-sm backdrop-blur lg:flex-row lg:items-center lg:justify-between">
         <Link className="flex min-w-0 shrink-0 items-center gap-3" href="/dashboard">
           <Brand />
-          <span className="hidden min-w-0 xl:block">
-            <span className="block truncate text-xs font-semibold text-[var(--muted)]">
+          <span className="hidden w-56 min-w-0 xl:block">
+            <span className="block text-xs font-semibold leading-4 text-[var(--muted)]">
               {t("appTagline")}
             </span>
           </span>
         </Link>
 
-        <div className="flex w-full flex-wrap items-center gap-2 md:w-auto md:justify-end">
-          <nav className="order-2 grid w-full grid-cols-3 gap-1 rounded-lg border border-[var(--line)] bg-[#f8faf7] p-1 md:order-none md:flex md:w-auto md:flex-wrap">
+        <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:flex-nowrap lg:justify-end">
+          <nav className="order-2 grid w-full grid-cols-3 gap-1 rounded-lg border border-[var(--line)] bg-[#f8faf7] p-1 lg:order-none lg:flex lg:w-auto lg:flex-nowrap">
             {nav.map((item) => {
               const Icon = item.icon;
               const active = pathname.startsWith(item.href);

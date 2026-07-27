@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
   <title id="title">PaperMint</title>
   <rect width="64" height="64" rx="15" fill="#17211b"/>
-  <path d="M17 10h22l10 10v34H17z" fill="#ffffff"/>
-  <path d="M39 10v10h10z" fill="#78d7ac"/>
-  <path d="M24 29h18M24 37h18M24 45h11" fill="none" stroke="#2f8c67" stroke-linecap="round" stroke-width="3"/>
+  <path d="M18 10h19c8.3 0 15 6.7 15 15v13H40v16H18V10Z" fill="#ffffff"/>
+  <path d="M28 22h6.5a7 7 0 0 1 0 14H31l-3 3V22Z" fill="#17211b"/>
+  <path d="M40 38h12L40 50V38Z" fill="#69d2a5"/>
 </svg>
