@@ -1,9 +1,9 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { DragEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Check, ChevronDown, Copy, Download, Eye, EyeOff, GripVertical, ListPlus, Loader2, LockKeyhole, Plus, Printer, Save, Trash2, Upload } from "lucide-react";
+import { Check, ChevronDown, Copy, Download, Eye, EyeOff, GripVertical, ListPlus, Loader2, LockKeyhole, Plus, Printer, RotateCcw, Save, Trash2, Upload } from "lucide-react";
 import { pdf } from "@react-pdf/renderer";
 import { AppShell } from "@/components/app/AppShell";
 import { ProtectedRoute } from "@/components/app/ProtectedRoute";
@@ -14,7 +14,7 @@ import { useToast } from "@/components/app/ToastProvider";
 import { calculateTotals, formatAud, lineTotal } from "@/lib/calculations";
 import { billingErrorMessage, isFreeDocumentLimitReached } from "@/lib/billing";
 import { pickLanguage, type Language } from "@/lib/i18n";
-import { cleanDecimalInput, decimalValue, parseQuickLineItems } from "@/lib/line-items";
+import { cleanDecimalInput, decimalValue, parseQuickLineItems, reorderLineItems } from "@/lib/line-items";
 import {
   createEmptyDocument,
   createLineItem,
@@ -135,6 +135,7 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
   const [showPreview, setShowPreview] = useState(false);
   const [selectedCompanyProfileId, setSelectedCompanyProfileId] = useState("");
   const [quickItemsText, setQuickItemsText] = useState("");
+  const [draggedLineItemId, setDraggedLineItemId] = useState<string | null>(null);
   const limitReached = isFreeDocumentLimitReached(billing);
 
   const draftKey = useMemo(() => {
@@ -291,6 +292,15 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
         ...current,
         lineItems: current.lineItems.map((item) => (item.id === id ? { ...item, ...patch } : item))
       };
+    });
+  }
+
+  function moveLineItem(sourceId: string, targetId: string) {
+    if (sourceId === targetId) return;
+    setPaper((current) => {
+      if (!current) return current;
+      const lineItems = reorderLineItems(current.lineItems, sourceId, targetId);
+      return lineItems === current.lineItems ? current : { ...current, lineItems };
     });
   }
 
@@ -642,6 +652,29 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
                       <Plus className="h-3.5 w-3.5" />
                       {copy({ en: "Add item", zh: "添加项目", vi: "Thêm hạng mục", ar: "إضافة بند" })}
                     </button>
+                    {paper.type === "invoice" ? (
+                      <button
+                        className="btn-secondary border-[#e8c9c9] bg-[#fff8f7] px-3 py-2 text-xs text-[var(--rose)]"
+                        onClick={() => updatePaper({
+                          lineItems: [
+                            ...paper.lineItems,
+                            {
+                              ...createLineItem("return"),
+                              details: copy({
+                                en: "Expired goods return",
+                                zh: "过期商品退货",
+                                vi: "Hàng hết hạn trả lại",
+                                ar: "مرتجعات بضائع منتهية الصلاحية"
+                              })
+                            }
+                          ]
+                        })}
+                        type="button"
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" />
+                        {copy({ en: "Add return / expired item", zh: "添加退货／过期商品", vi: "Thêm hàng trả / hết hạn", ar: "إضافة مرتجع" })}
+                      </button>
+                    ) : null}
                   </div>
                 </div>
 
@@ -673,8 +706,25 @@ export function DocumentEditor({ documentId }: { documentId?: string }) {
                       key={item.id}
                       language={language}
                       products={products}
+                      dragging={draggedLineItemId === item.id}
                       onChange={(patch) => updateLineItem(item.id, patch)}
                       onDelete={() => updatePaper({ lineItems: paper.lineItems.filter((candidate) => candidate.id !== item.id) })}
+                      onDragEnd={() => setDraggedLineItemId(null)}
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = "move";
+                      }}
+                      onDragStart={(event) => {
+                        event.dataTransfer.effectAllowed = "move";
+                        event.dataTransfer.setData("text/plain", item.id);
+                        setDraggedLineItemId(item.id);
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        const sourceId = event.dataTransfer.getData("text/plain") || draggedLineItemId;
+                        if (sourceId) moveLineItem(sourceId, item.id);
+                        setDraggedLineItemId(null);
+                      }}
                     />
                   ))}
                 </div>
@@ -873,26 +923,56 @@ function LineItemEditor({
   canDelete,
   language,
   products,
+  dragging,
   onChange,
-  onDelete
+  onDelete,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDrop
 }: {
   item: LineItem;
   index: number;
   canDelete: boolean;
   language: Language;
   products: InventoryProduct[];
+  dragging: boolean;
   onChange: (patch: Partial<LineItem>) => void;
   onDelete: () => void;
+  onDragStart: (event: DragEvent<HTMLSpanElement>) => void;
+  onDragEnd: () => void;
+  onDragOver: (event: DragEvent<HTMLElement>) => void;
+  onDrop: (event: DragEvent<HTMLElement>) => void;
 }) {
   const copy = <T,>(values: { en: T; zh?: T; vi?: T; ar?: T }) => pickLanguage(language, values);
-  const [advancedOpen, setAdvancedOpen] = useState(Boolean(item.productId || item.discount.value || item.gstEnabled === false));
+  const isReturn = item.itemType === "return" || item.unitPrice < 0;
+  const [advancedOpen, setAdvancedOpen] = useState(Boolean(isReturn || item.productId || item.discount.value || item.gstEnabled === false));
   return (
-    <article className="overflow-hidden rounded-lg border border-[var(--line)] bg-white/80 shadow-[0_1px_2px_rgba(23,33,27,0.04)]">
+    <article
+      className={`overflow-hidden rounded-lg border bg-white/80 shadow-[0_1px_2px_rgba(23,33,27,0.04)] transition ${
+        dragging ? "border-[var(--mint-dark)] opacity-50 ring-2 ring-[#cce8d8]" : "border-[var(--line)]"
+      }`}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+    >
       <div className="flex items-center gap-2 border-b border-[var(--line)] bg-[#f8faf7] px-3 py-2">
-        <GripVertical className="h-4 w-4 shrink-0 text-[var(--muted)]" />
+        <span
+          className="grid h-7 w-7 shrink-0 cursor-grab place-items-center rounded-md text-[var(--muted)] hover:bg-white hover:text-[var(--foreground)] active:cursor-grabbing"
+          draggable
+          onDragEnd={onDragEnd}
+          onDragStart={onDragStart}
+          title={copy({ en: "Drag to reorder", zh: "拖拽调整顺序", vi: "Kéo để sắp xếp", ar: "اسحب لإعادة الترتيب" })}
+        >
+          <GripVertical className="h-4 w-4" />
+        </span>
         <span className="shrink-0 text-xs font-black text-[var(--muted)]">
           {copy({ en: `Item ${index + 1}`, zh: `项目 ${index + 1}`, vi: `Mục ${index + 1}`, ar: `البند ${index + 1}` })}
         </span>
+        {isReturn ? (
+          <span className="shrink-0 rounded-md bg-[#fff0ed] px-2 py-1 text-[10px] font-black uppercase tracking-wide text-[var(--rose)]">
+            {copy({ en: "Return / expired", zh: "退货／过期", vi: "Trả / hết hạn", ar: "مرتجع" })}
+          </span>
+        ) : null}
         <span className="min-w-0 flex-1 truncate text-sm font-bold">
           {item.description || copy({ en: "Untitled item", zh: "未命名项目" })}
         </span>
@@ -928,7 +1008,10 @@ function LineItemEditor({
         <DecimalInput
           allowNegative
           label={copy({ en: "Unit price", zh: "单价", vi: "Đơn giá", ar: "سعر الوحدة" })}
-          onChange={(unitPrice) => onChange({ unitPrice })}
+          onChange={(unitPrice) => onChange({
+            itemType: unitPrice < 0 || isReturn ? "return" : "sale",
+            unitPrice: isReturn ? -Math.abs(unitPrice) : unitPrice
+          })}
           value={item.unitPrice}
         />
         <div>
@@ -940,14 +1023,45 @@ function LineItemEditor({
       </div>
 
       {advancedOpen ? (
-        <div className="grid gap-2 border-t border-[var(--line)] bg-[#fbfcfa] px-3 py-3 sm:grid-cols-2 lg:grid-cols-[minmax(240px,1fr)_130px_180px]">
+        <div className="grid gap-2 border-t border-[var(--line)] bg-[#fbfcfa] px-3 py-3 sm:grid-cols-2 lg:grid-cols-[180px_minmax(220px,1fr)_130px_180px]">
+          <label>
+            <span className="label">{copy({ en: "Line type", zh: "项目类型", vi: "Loại hạng mục", ar: "نوع البند" })}</span>
+            <select
+              className="field py-2 text-sm"
+              onChange={(event) => {
+                const itemType = event.target.value as "sale" | "return";
+                onChange({
+                  itemType,
+                  unitPrice: itemType === "return" ? -Math.abs(item.unitPrice) : Math.abs(item.unitPrice),
+                  details: itemType === "return" && !item.details
+                    ? copy({
+                        en: "Expired goods return",
+                        zh: "过期商品退货",
+                        vi: "Hàng hết hạn trả lại",
+                        ar: "مرتجعات بضائع منتهية الصلاحية"
+                      })
+                    : item.details
+                });
+              }}
+              value={isReturn ? "return" : "sale"}
+            >
+              <option value="sale">{copy({ en: "Sale item", zh: "销售商品", vi: "Hàng bán", ar: "بند بيع" })}</option>
+              <option value="return">{copy({ en: "Return / expired item", zh: "退货／过期商品", vi: "Hàng trả / hết hạn", ar: "بند مرتجع" })}</option>
+            </select>
+          </label>
           {products.length ? (
             <label>
               <span className="label">{copy({ en: "Inventory product (optional)", zh: "库存商品（可选）" })}</span>
               <select className="field py-2 text-sm" value={item.productId ?? ""} onChange={(event) => {
                 const selected = products.find((product) => product.id === event.target.value);
                 onChange(selected
-                  ? { productId: selected.id, description: selected.name, details: selected.description ?? item.details, unitPrice: selected.sale_price, gstEnabled: selected.gst_enabled }
+                  ? {
+                      productId: selected.id,
+                      description: selected.name,
+                      details: selected.description ?? item.details,
+                      unitPrice: isReturn ? -Math.abs(selected.sale_price) : Math.abs(selected.sale_price),
+                      gstEnabled: selected.gst_enabled
+                    }
                   : { productId: null });
               }}>
                 <option value="">{copy({ en: "Manual line item", zh: "普通项目（不关联库存）" })}</option>
@@ -972,9 +1086,14 @@ function LineItemEditor({
             </span>
           </label>
           <DiscountEditor compactSelect discount={item.discount} label={copy({ en: "Item discount", zh: "项目折扣" })} onChange={(discount) => onChange({ discount })} />
-          {item.unitPrice < 0 ? (
-            <p className="text-xs font-bold text-[var(--rose)] sm:col-span-2 lg:col-span-3">
-              {copy({ en: "For customer returns, use Refund / adjustment below so the invoice balance and inventory stay in sync.", zh: "客户退货请使用页面下方的“退货、退款或折让”，系统会同时更新应付余额和库存。" })}
+          {isReturn ? (
+            <p className="text-xs font-bold text-[var(--rose)] sm:col-span-2 lg:col-span-4">
+              {copy({
+                en: "This return stays visible on the invoice and reduces the amount due. Expired goods are not added back to sellable stock.",
+                zh: "这条退货会显示在 Invoice 上并减少客户应付金额；过期商品不会重新计入可销售库存。",
+                vi: "Khoản trả lại này hiển thị trên hóa đơn và giảm số tiền phải trả; hàng hết hạn không được cộng lại vào tồn kho bán được.",
+                ar: "يظهر هذا المرتجع في الفاتورة ويخفض المبلغ المستحق، ولا يُعاد إلى المخزون القابل للبيع."
+              })}
             </p>
           ) : null}
         </div>

@@ -48,7 +48,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     supabase.auth.getUser().then(({ data }) => {
       if (mounted) {
-        setUser(data.user);
+        setUser((current) => current?.id === data.user?.id ? current : data.user);
         setLoading(false);
       }
     });
@@ -59,7 +59,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       window.localStorage.removeItem(demoSessionKey);
       window.localStorage.removeItem(legacyDemoKey);
       setDemo(false);
-      setUser(session?.user ?? null);
+      const nextUser = session?.user ?? null;
+      setUser((current) => current?.id === nextUser?.id ? current : nextUser);
       setLoading(false);
     });
 

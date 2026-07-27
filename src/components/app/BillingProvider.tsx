@@ -38,7 +38,6 @@ export function BillingProvider({ children }: { children: React.ReactNode }) {
   }, [user]);
 
   useEffect(() => {
-    setLoading(true);
     void refreshBilling();
   }, [pathname, refreshBilling]);
 

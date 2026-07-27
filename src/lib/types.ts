@@ -69,6 +69,7 @@ export type CompanyRecord = {
 export type LineItem = {
   id: string;
   productId?: string | null;
+  itemType?: "sale" | "return";
   description: string;
   details: string;
   quantity: number;

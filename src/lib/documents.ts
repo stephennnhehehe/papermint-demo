@@ -32,9 +32,10 @@ export const defaultCompanyProfile: CompanyProfile = {
   default_notes: "Thank you for your business."
 };
 
-export function createLineItem(): LineItem {
+export function createLineItem(itemType: "sale" | "return" = "sale"): LineItem {
   return {
     id: crypto.randomUUID(),
+    itemType,
     description: "",
     details: "",
     quantity: 1,
@@ -157,7 +158,11 @@ export function documentFromRow(row: DocumentRow): PaperDocument {
     billTo: row.bill_to,
     shipTo: row.ship_to,
     lineItems: row.line_items?.length
-      ? row.line_items.map((item) => ({ ...item, gstEnabled: item.gstEnabled ?? true }))
+      ? row.line_items.map((item) => ({
+          ...item,
+          itemType: item.itemType ?? (Number(item.unitPrice) < 0 ? "return" : "sale"),
+          gstEnabled: item.gstEnabled ?? true
+        }))
       : [createLineItem()],
     orderDiscount: row.order_discount,
     notes: row.notes ?? "",

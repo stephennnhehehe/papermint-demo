@@ -43,10 +43,22 @@ export function normalizeLineItems(items: LineItem[]): LineItem[] {
   const roundThree = (value: number) => Math.round((Number(value) || 0) * 1000) / 1000;
   return items.map((item) => ({
     ...item,
+    itemType: item.itemType ?? (Number(item.unitPrice) < 0 ? "return" : "sale"),
     quantity: Math.max(0, roundThree(item.quantity)),
     unitPrice: roundThree(item.unitPrice),
     gstEnabled: item.gstEnabled !== false
   }));
+}
+
+export function reorderLineItems(items: LineItem[], sourceId: string, targetId: string) {
+  if (sourceId === targetId) return items;
+  const sourceIndex = items.findIndex((item) => item.id === sourceId);
+  const targetIndex = items.findIndex((item) => item.id === targetId);
+  if (sourceIndex < 0 || targetIndex < 0) return items;
+  const reordered = [...items];
+  const [movedItem] = reordered.splice(sourceIndex, 1);
+  reordered.splice(targetIndex, 0, movedItem);
+  return reordered;
 }
 
 /**

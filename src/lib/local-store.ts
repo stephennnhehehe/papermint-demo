@@ -243,7 +243,13 @@ function localSyncDocumentInventory(userId: string, document: DocumentRow) {
   ])] as string[];
   for (const productId of productIds) {
     const existing = movements.filter((movement) => movement.source_type === "document" && movement.source_id === document.id && movement.product_id === productId).reduce((sum, movement) => sum + movement.quantity_delta, 0);
-    const desiredQuantity = document.line_items.filter((item) => item.productId === productId).reduce((sum, item) => sum + Math.max(0, Number(item.quantity)), 0);
+    const desiredQuantity = document.line_items
+      .filter((item) =>
+        item.productId === productId &&
+        item.itemType !== "return" &&
+        Number(item.unitPrice) >= 0
+      )
+      .reduce((sum, item) => sum + Math.max(0, Number(item.quantity)), 0);
     const desired = active ? -desiredQuantity : 0;
     const difference = desired - existing;
     if (Math.abs(difference) < 0.0005) continue;

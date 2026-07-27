@@ -189,8 +189,8 @@ export function InvoiceLedger({
           <h2>{copy({ en: "Invoice payments", zh: "发票收款", vi: "Thanh toán hóa đơn", ar: "مدفوعات الفاتورة" })}</h2>
           <p className="mt-1 max-w-2xl text-sm font-semibold text-[var(--muted)]">
             {copy({
-              en: "Record money received, or reduce what the customer owes after a return, refund or price correction.",
-              zh: "记录客户实际支付的款项；如发生退货、退款或价格更正，也可以直接减少客户应付金额。",
+              en: "Record money received and changes made after this invoice was issued. To show returned or expired goods on the invoice itself, add a Return line above.",
+              zh: "记录实际收款，以及 Invoice 开出后才发生的更正。如需让客户在本张 Invoice 上看到退货或过期商品，请在上方添加“退货／过期商品”项目。",
               vi: "Ghi tiền đã nhận hoặc giảm số tiền khách còn nợ sau hoàn trả hay điều chỉnh.",
               ar: "سجّل المبلغ المستلم أو خفّض المبلغ المستحق بعد الإرجاع أو التصحيح."
             })}
@@ -203,7 +203,7 @@ export function InvoiceLedger({
           </button>
           <button className="btn-secondary" onClick={() => { closePanel(); setPanel("adjustment"); }} type="button">
             <ReceiptText className="h-4 w-4" />
-            {copy({ en: "Refund / adjustment", zh: "退货、退款或折让", vi: "Hoàn tiền / điều chỉnh", ar: "استرداد / تعديل" })}
+            {copy({ en: "Post-invoice refund / adjustment", zh: "开票后退款／折让", vi: "Hoàn tiền / điều chỉnh", ar: "استرداد / تعديل" })}
           </button>
         </div>
       </div>
@@ -256,8 +256,8 @@ export function InvoiceLedger({
           />
           <Hint>
             {copy({
-              en: "Use this when goods are returned, you give a refund or discount after invoicing, or the original price was wrong. PaperMint creates the credit note for you.",
-              zh: "适用于客户退货、开票后退款或折让、原价格错误等情况。PaperMint 会自动生成 Credit Note，无需了解税务术语。"
+              en: "Use this only when the change happened after the invoice was issued—for example, a later refund, discount or price correction. PaperMint creates the credit note for you.",
+              zh: "仅用于 Invoice 开出后才发生的变更，例如之后的退款、折让或价格更正。PaperMint 会自动生成 Credit Note；需要显示在本张 Invoice 上的退货，请改用上方的退货项目。"
             })}
           </Hint>
           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
