@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Building2, Edit3, Loader2, Plus, Trash2, Upload } from "lucide-react";
 import { AppShell } from "@/components/app/AppShell";
 import { ProtectedRoute } from "@/components/app/ProtectedRoute";
+import { SettingsNavigation } from "@/components/settings/SettingsNavigation";
 import { useAuth } from "@/components/app/AuthProvider";
 import { useLanguage } from "@/components/app/LanguageProvider";
 import { useToast } from "@/components/app/ToastProvider";
@@ -230,7 +231,9 @@ export default function SettingsPage() {
   return (
     <ProtectedRoute>
       <AppShell>
-        <div className="mx-auto grid max-w-6xl gap-5 lg:grid-cols-[0.95fr_1.05fr]">
+        <div className="mx-auto grid max-w-6xl gap-5">
+        <SettingsNavigation active="business" />
+        <div className="grid gap-5 lg:grid-cols-[0.95fr_1.05fr]">
         <section className="panel p-5 sm:p-6">
           <div className="mb-6 flex items-center gap-3">
             <span className="grid h-10 w-10 place-items-center rounded-lg bg-[#e8f4ef] text-[var(--mint-dark)]">
@@ -399,6 +402,7 @@ export default function SettingsPage() {
             </div>
           ) : null}
         </section>
+        </div>
         </div>
       </AppShell>
     </ProtectedRoute>

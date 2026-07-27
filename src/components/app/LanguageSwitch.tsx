@@ -36,7 +36,7 @@ export function LanguageSwitch() {
       </button>
       {open ? (
         <div
-          className="absolute right-0 z-[80] mt-2 w-48 overflow-hidden rounded-lg border border-[var(--line)] bg-white p-1.5 shadow-[0_18px_45px_rgba(23,33,27,0.16)]"
+          className="absolute left-0 right-auto z-[80] mt-2 w-48 max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-[var(--line)] bg-white p-1.5 shadow-[0_18px_45px_rgba(23,33,27,0.16)] sm:left-auto sm:right-0"
           role="menu"
         >
           {languageOptions.map((option) => (

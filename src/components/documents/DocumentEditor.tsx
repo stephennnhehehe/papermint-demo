@@ -11,6 +11,7 @@ import { useAuth } from "@/components/app/AuthProvider";
 import { useBilling } from "@/components/app/BillingProvider";
 import { useLanguage } from "@/components/app/LanguageProvider";
 import { useToast } from "@/components/app/ToastProvider";
+import { ProductSearchInput } from "@/components/inventory/ProductSearchInput";
 import { calculateTotals, formatAud, lineTotal } from "@/lib/calculations";
 import { billingErrorMessage, isFreeDocumentLimitReached } from "@/lib/billing";
 import { pickLanguage, type Language } from "@/lib/i18n";
@@ -1050,10 +1051,11 @@ function LineItemEditor({
             </select>
           </label>
           {products.length ? (
-            <label>
-              <span className="label">{copy({ en: "Inventory product (optional)", zh: "库存商品（可选）" })}</span>
-              <select className="field py-2 text-sm" value={item.productId ?? ""} onChange={(event) => {
-                const selected = products.find((product) => product.id === event.target.value);
+            <ProductSearchInput
+              compact
+              label={copy({ en: "Inventory product (optional)", zh: "库存商品（可选）" })}
+              onHandLabel={copy({ en: "on hand", zh: "库存" })}
+              onSelect={(selected) => {
                 onChange(selected
                   ? {
                       productId: selected.id,
@@ -1063,15 +1065,11 @@ function LineItemEditor({
                       gstEnabled: selected.gst_enabled
                     }
                   : { productId: null });
-              }}>
-                <option value="">{copy({ en: "Manual line item", zh: "普通项目（不关联库存）" })}</option>
-                {products.map((product) => (
-                  <option key={product.id} value={product.id}>
-                    {product.sku} · {product.name} ({product.quantity_on_hand} {copy({ en: "on hand", zh: "库存" })})
-                  </option>
-                ))}
-              </select>
-            </label>
+              }}
+              placeholder={copy({ en: "Type product name or SKU", zh: "输入商品名称或 SKU" })}
+              products={products}
+              value={item.productId ?? null}
+            />
           ) : <div />}
           <label>
             <span className="label">GST</span>

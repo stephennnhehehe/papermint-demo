@@ -498,6 +498,11 @@ export function localFetchInventoryProducts(userId: string) {
 export function localUpsertInventoryProduct(userId: string, product: Partial<InventoryProduct> & Pick<InventoryProduct, "name" | "sku">) {
   const rows = localFetchInventoryProducts(userId);
   const existing = rows.find((item) => item.id === product.id);
+  const duplicateSku = rows.find((item) =>
+    item.id !== product.id &&
+    item.sku.toUpperCase() === product.sku.toUpperCase()
+  );
+  if (duplicateSku) throw new Error("SKU_ALREADY_EXISTS");
   const saved: InventoryProduct = { id: product.id ?? crypto.randomUUID(), user_id: userId, company_profile_id: product.company_profile_id ?? null, sku: product.sku, name: product.name, description: product.description ?? null, unit: product.unit ?? "each", sale_price: Number(product.sale_price) || 0, average_cost: existing?.average_cost ?? (Number(product.average_cost) || 0), quantity_on_hand: existing?.quantity_on_hand ?? 0, reorder_level: Number(product.reorder_level) || 0, gst_enabled: product.gst_enabled ?? true, track_inventory: product.track_inventory ?? true, is_active: product.is_active ?? true, created_at: existing?.created_at ?? now(), updated_at: now() };
   writeJson(`inventory-products:${userId}`, [saved, ...rows.filter((item) => item.id !== saved.id)]);
   return saved;
