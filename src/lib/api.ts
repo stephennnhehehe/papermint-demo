@@ -2,6 +2,7 @@ import { calculateTotals } from "./calculations";
 import { normalizeLineItems } from "./line-items";
 import { normalizeBillingStatus } from "./billing";
 import { documentFromRow } from "./documents";
+import { compareDocumentsByIssueDateDesc } from "./document-order";
 import {
   localDeleteCompanyProfile,
   localDeleteCustomer,
@@ -96,7 +97,6 @@ export async function fetchCompanyProfiles(userId: string): Promise<CompanyRecor
     .select("*")
     .eq("user_id", userId)
     .order("is_default", { ascending: false })
-    .order("issue_date", { ascending: false })
     .order("updated_at", { ascending: false });
 
   if (error) throw error;
@@ -206,7 +206,7 @@ export async function fetchDocuments(userId: string): Promise<DocumentRow[]> {
     .order("updated_at", { ascending: false });
 
   if (error) throw error;
-  return (data ?? []) as DocumentRow[];
+  return ((data ?? []) as DocumentRow[]).sort(compareDocumentsByIssueDateDesc);
 }
 
 export async function fetchDocument(userId: string, id: string): Promise<PaperDocument | null> {
