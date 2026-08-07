@@ -96,6 +96,7 @@ export async function fetchCompanyProfiles(userId: string): Promise<CompanyRecor
     .select("*")
     .eq("user_id", userId)
     .order("is_default", { ascending: false })
+    .order("issue_date", { ascending: false })
     .order("updated_at", { ascending: false });
 
   if (error) throw error;

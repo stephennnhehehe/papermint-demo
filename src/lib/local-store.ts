@@ -3,6 +3,7 @@ import { calculateInventoryPosition } from "./inventory-ledger";
 import { normalizeLineItems } from "./line-items";
 import { FREE_WEEKLY_DOCUMENT_LIMIT, freeBillingStatus, startOfLocalWeek } from "./billing";
 import { documentFromRow } from "./documents";
+import { compareDocumentsByIssueDateDesc } from "./document-order";
 import type {
   BillingStatus,
   CompanyRecord,
@@ -168,9 +169,7 @@ export function localDeleteCustomer(userId: string, id: string) {
 }
 
 export function localFetchDocuments(userId: string): DocumentRow[] {
-  return readJson<DocumentRow[]>(`documents:${userId}`, []).sort((a, b) =>
-    b.updated_at.localeCompare(a.updated_at)
-  );
+  return readJson<DocumentRow[]>(`documents:${userId}`, []).sort(compareDocumentsByIssueDateDesc);
 }
 
 export function localFetchDocument(userId: string, id: string): PaperDocument | null {

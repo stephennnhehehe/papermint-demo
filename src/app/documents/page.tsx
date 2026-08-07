@@ -19,6 +19,7 @@ import { shareDocument } from "@/lib/document-delivery";
 import { pickLanguage } from "@/lib/i18n";
 import { statusForDueDate } from "@/lib/documents";
 import { addDays, documentFromRow, generateDocumentNumber } from "@/lib/documents";
+import { compareDocumentsByIssueDateDesc } from "@/lib/document-order";
 import type { DocumentRow, DocumentStatus, DocumentType } from "@/lib/types";
 
 const documentStatuses: DocumentStatus[] = ["draft", "sent", "paid", "overdue", "cancelled"];
@@ -70,12 +71,14 @@ export default function DocumentsPage() {
 
   const visibleDocuments = useMemo(
     () =>
-      documents.filter((document) => {
-        const matchesType = filter === "all" || document.type === filter;
-        const matchesCustomer = customerFilter === "all" || document.bill_to?.name === customerFilter;
-        const matchesIssuer = issuerFilter === "all" || document.company?.name === issuerFilter;
-        return matchesType && matchesCustomer && matchesIssuer;
-      }),
+      documents
+        .filter((document) => {
+          const matchesType = filter === "all" || document.type === filter;
+          const matchesCustomer = customerFilter === "all" || document.bill_to?.name === customerFilter;
+          const matchesIssuer = issuerFilter === "all" || document.company?.name === issuerFilter;
+          return matchesType && matchesCustomer && matchesIssuer;
+        })
+        .sort(compareDocumentsByIssueDateDesc),
     [customerFilter, documents, filter, issuerFilter]
   );
 
@@ -334,7 +337,7 @@ export default function DocumentsPage() {
                     <th className="px-3">{copy({ en: "Type", zh: "类型", vi: "Loại", ar: "النوع" })}</th>
                     <th className="px-3">{t("status")}</th>
                     <th className="px-3 text-right">{t("total")}</th>
-                    <th className="px-3">{copy({ en: "Updated", zh: "更新时间", vi: "Cập nhật", ar: "آخر تحديث" })}</th>
+                    <th className="px-3">{copy({ en: "Issue date", zh: "开票日期", vi: "Ngày phát hành", ar: "تاريخ الإصدار" })}</th>
                     <th className="py-3 pl-3 text-right">{copy({ en: "Actions", zh: "操作", vi: "Thao tác", ar: "الإجراءات" })}</th>
                   </tr>
                 </thead>
@@ -362,7 +365,7 @@ export default function DocumentsPage() {
                         />
                       </td>
                       <td className="px-3 text-right font-black">{formatAud(row.totals?.total ?? 0)}</td>
-                      <td className="px-3 text-[var(--muted)]">{new Date(row.updated_at).toLocaleDateString()}</td>
+                      <td className="px-3 text-[var(--muted)]">{new Date(`${row.issue_date}T12:00:00`).toLocaleDateString()}</td>
                       <td className="py-3 pl-3">
                         <div className="flex justify-end gap-2">
                           <button className="icon-btn" disabled={limitReached || busyAction === `duplicate:${row.id}`} onClick={() => handleDuplicate(row)} title={limitReached ? billingErrorMessage(new Error("FREE_WEEKLY_DOCUMENT_LIMIT_REACHED"), language) : t("duplicate")} type="button">

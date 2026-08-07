@@ -15,10 +15,10 @@ import { billingErrorMessage, isFreeDocumentLimitReached } from "@/lib/billing";
 import { formatAud } from "@/lib/calculations";
 import { shareDocument } from "@/lib/document-delivery";
 import { documentFromRow, statusForDueDate } from "@/lib/documents";
+import { buildDocumentTimeline, type DashboardPeriod } from "@/lib/dashboard-timeline";
 import { pickLanguage } from "@/lib/i18n";
 import type { CompanyRecord, DocumentRow, Expense } from "@/lib/types";
 
-type Period = "week" | "month" | "fiscal";
 type Action = { key: string; document: DocumentRow; tone: "rose" | "amber" | "mint"; title: string; detail: string; kind: "remind" | "open" };
 
 const dayMs = 86_400_000;
@@ -26,35 +26,6 @@ const dateOnly = (value: Date) => value.toISOString().slice(0, 10);
 
 function overdue(document: DocumentRow) {
   return document.type === "invoice" && statusForDueDate(document.status, document.due_date ?? "") === "overdue";
-}
-
-function startOfFiscalYear(today = new Date()) {
-  return new Date(today.getMonth() >= 6 ? today.getFullYear() : today.getFullYear() - 1, 6, 1);
-}
-
-function timeline(documents: DocumentRow[], period: Period) {
-  const now = new Date();
-  const weekly = period === "week";
-  const count = weekly ? 12 : 12;
-  const start = weekly ? new Date(now.getTime() - 11 * 7 * dayMs) : period === "fiscal" ? startOfFiscalYear(now) : new Date(now.getFullYear(), 0, 1);
-  const buckets = Array.from({ length: count }, (_, index) => {
-    const bucketStart = weekly ? new Date(start.getTime() + index * 7 * dayMs) : new Date(start.getFullYear(), start.getMonth() + index, 1);
-    const bucketEnd = weekly ? new Date(bucketStart.getTime() + 7 * dayMs - 1) : new Date(bucketStart.getFullYear(), bucketStart.getMonth() + 1, 0, 23, 59, 59);
-    return { label: weekly ? `${bucketStart.toLocaleDateString("en-AU", { day: "numeric", month: "short" })}` : bucketStart.toLocaleDateString("en-AU", { month: "short" }), start: bucketStart, end: bucketEnd, received: 0, expected: 0, overdue: 0, gst: 0 };
-  });
-  for (const document of documents.filter((item) => item.type === "invoice" && item.status !== "cancelled" && item.status !== "draft")) {
-    const paidDate = document.paid_at ?? (document.status === "paid" ? document.updated_at : null);
-    const targetDate = paidDate ? new Date(paidDate) : document.due_date ? new Date(`${document.due_date}T12:00:00`) : null;
-    if (!targetDate) continue;
-    const bucket = buckets.find((item) => targetDate >= item.start && targetDate <= item.end);
-    if (!bucket) continue;
-    const total = Number(document.totals?.total ?? 0);
-    const gst = Number(document.totals?.gst ?? 0);
-    if (document.status === "paid") { bucket.received += total; bucket.gst += gst; }
-    else if (overdue(document)) bucket.overdue += total;
-    else bucket.expected += total;
-  }
-  return buckets.map(({ label, received, expected, overdue: late, gst }) => ({ label, received, expected, overdue: late, gst }));
 }
 
 export default function DashboardPage() {
@@ -67,7 +38,7 @@ export default function DashboardPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [companies, setCompanies] = useState<CompanyRecord[]>([]);
   const [companyId, setCompanyId] = useState("all");
-  const [period, setPeriod] = useState<Period>("fiscal");
+  const [period, setPeriod] = useState<DashboardPeriod>("fiscal");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
   const [now] = useState(() => Date.now());
@@ -92,7 +63,7 @@ export default function DashboardPage() {
   const late = invoices.filter(overdue).reduce((sum, document) => sum + Number(document.totals?.total ?? 0), 0);
   const outstanding = invoices.filter((document) => document.status !== "paid" && !overdue(document) && document.status !== "draft").reduce((sum, document) => sum + Number(document.totals?.total ?? 0), 0);
   const gstReserve = invoices.filter((document) => document.status === "paid").reduce((sum, document) => sum + Number(document.totals?.gst ?? 0), 0) - filteredExpenses.reduce((sum, expense) => sum + (expense.gst_claimable ? Number(expense.gst_amount) : 0), 0);
-  const chart = useMemo(() => timeline(filtered, period), [filtered, period]);
+  const chart = useMemo(() => buildDocumentTimeline(filtered, period), [filtered, period]);
 
   const actions = useMemo<Action[]>(() => {
     const convertedIds = new Set(filtered.map((document) => document.converted_from_quote_id).filter(Boolean));
@@ -159,7 +130,7 @@ export default function DashboardPage() {
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><Stat icon={<CheckCircle2 className="h-5 w-5" />} label={copy({ en: "Received", zh: "已收", vi: "Đã nhận", ar: "المستلم" })} value={formatAud(paid)} tone="mint" /><Stat icon={<Clock3 className="h-5 w-5" />} label={copy({ en: "Outstanding", zh: "待收", vi: "Chờ thu", ar: "مستحق" })} value={formatAud(outstanding)} tone="blue" /><Stat icon={<AlertCircle className="h-5 w-5" />} label={t("overdue")} value={formatAud(late)} tone="rose" /><Stat icon={<Sparkles className="h-5 w-5" />} label={copy({ en: "GST reserve", zh: "GST 预留", vi: "Dự phòng GST", ar: "احتياطي GST" })} value={formatAud(gstReserve)} tone="amber" /></section>
 
       <section className="grid gap-5 xl:grid-cols-[1.55fr_.75fr]">
-        <div className="panel p-5"><div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-xl font-black">Money Timeline</h2><p className="text-sm font-semibold text-[var(--muted)]">{copy({ en: "Received cash, expected receipts, overdue value and GST.", zh: "已收现金、预计到账、逾期金额和 GST。", vi: "Tiền đã nhận, dự kiến thu, quá hạn và GST.", ar: "المبالغ المستلمة والمتوقعة والمتأخرة وGST." })}</p></div><div className="inline-grid grid-cols-3 rounded-lg border border-[var(--line)] bg-[#f7f9f6] p-1">{(["week", "month", "fiscal"] as Period[]).map((item) => <button className={`rounded-md px-3 py-2 text-sm font-black ${period === item ? "bg-white text-[var(--mint-dark)] shadow-sm" : "text-[var(--muted)]"}`} key={item} onClick={() => setPeriod(item)} type="button">{{ week: "12W", month: copy({ en: "Year", zh: "年度", vi: "Năm", ar: "سنة" }), fiscal: "FY" }[item]}</button>)}</div></div><div className="h-[340px]"><ResponsiveContainer width="100%" height="100%"><ComposedChart data={chart} margin={{ left: 0, right: 8, top: 12, bottom: 0 }}><CartesianGrid stroke="#e3e9e2" vertical={false} /><XAxis dataKey="label" stroke="#66736b" tickLine={false} /><YAxis stroke="#66736b" tickFormatter={(value) => `$${value}`} tickLine={false} width={58} /><Tooltip formatter={(value) => formatAud(Number(value))} /><Bar dataKey="received" name="Received" fill="#2f8c67" radius={[4, 4, 0, 0]} /><Bar dataKey="expected" name="Expected" fill="#72a8d9" radius={[4, 4, 0, 0]} /><Bar dataKey="overdue" name="Overdue" fill="#d75b6b" radius={[4, 4, 0, 0]} /><Line dataKey="gst" name="GST reserve" stroke="#d49b31" strokeWidth={2.5} dot={false} type="monotone" /></ComposedChart></ResponsiveContainer></div><div className="mt-3 flex flex-wrap gap-4 text-xs font-bold text-[var(--muted)]"><Legend color="#2f8c67" label="Received" /><Legend color="#72a8d9" label="Expected" /><Legend color="#d75b6b" label="Overdue" /><Legend color="#d49b31" label="GST" line /></div></div>
+        <div className="panel p-5"><div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-xl font-black">Money Timeline</h2><p className="text-sm font-semibold text-[var(--muted)]">{copy({ en: "Received, expected, overdue and GST totals grouped by issue date.", zh: "已收、待收、逾期和 GST 均按开票日期统计。", vi: "Các khoản đã nhận, dự kiến, quá hạn và GST được nhóm theo ngày phát hành.", ar: "تُجمع المبالغ المستلمة والمتوقعة والمتأخرة وGST حسب تاريخ الإصدار." })}</p></div><div className="inline-grid grid-cols-3 rounded-lg border border-[var(--line)] bg-[#f7f9f6] p-1">{(["week", "month", "fiscal"] as DashboardPeriod[]).map((item) => <button className={`rounded-md px-3 py-2 text-sm font-black ${period === item ? "bg-white text-[var(--mint-dark)] shadow-sm" : "text-[var(--muted)]"}`} key={item} onClick={() => setPeriod(item)} type="button">{{ week: "12W", month: copy({ en: "Year", zh: "年度", vi: "Năm", ar: "سنة" }), fiscal: "FY" }[item]}</button>)}</div></div><div className="h-[340px]"><ResponsiveContainer width="100%" height="100%"><ComposedChart data={chart} margin={{ left: 0, right: 8, top: 12, bottom: 0 }}><CartesianGrid stroke="#e3e9e2" vertical={false} /><XAxis dataKey="label" stroke="#66736b" tickLine={false} /><YAxis stroke="#66736b" tickFormatter={(value) => `$${value}`} tickLine={false} width={58} /><Tooltip formatter={(value) => formatAud(Number(value))} /><Bar dataKey="received" name="Received" fill="#2f8c67" radius={[4, 4, 0, 0]} /><Bar dataKey="expected" name="Expected" fill="#72a8d9" radius={[4, 4, 0, 0]} /><Bar dataKey="overdue" name="Overdue" fill="#d75b6b" radius={[4, 4, 0, 0]} /><Line dataKey="gst" name="GST reserve" stroke="#d49b31" strokeWidth={2.5} dot={false} type="monotone" /></ComposedChart></ResponsiveContainer></div><div className="mt-3 flex flex-wrap gap-4 text-xs font-bold text-[var(--muted)]"><Legend color="#2f8c67" label="Received" /><Legend color="#72a8d9" label="Expected" /><Legend color="#d75b6b" label="Overdue" /><Legend color="#d49b31" label="GST" line /></div></div>
 
         <div className="panel p-5"><div className="mb-4 flex items-center justify-between"><div><h2 className="text-xl font-black">Today’s Actions</h2><p className="text-sm font-semibold text-[var(--muted)]">{copy({ en: "A focused follow-up queue.", zh: "集中处理今天的跟进。", vi: "Danh sách theo dõi tập trung.", ar: "قائمة متابعة مركزة." })}</p></div><CalendarClock className="h-5 w-5 text-[var(--mint-dark)]" /></div>{actions.length === 0 ? <div className="rounded-lg border border-dashed border-[var(--line)] p-8 text-center"><CheckCircle2 className="mx-auto h-7 w-7 text-[var(--mint-dark)]" /><p className="mt-2 font-black">{copy({ en: "Nothing urgent today", zh: "今天没有紧急事项", vi: "Hôm nay không có việc gấp", ar: "لا شيء عاجل اليوم" })}</p></div> : <div className="grid gap-2">{actions.map((action) => <article className="rounded-lg border border-[var(--line)] bg-white/80 p-3" key={action.key}><div className="flex items-start gap-3"><span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${action.tone === "rose" ? "bg-rose-500" : action.tone === "amber" ? "bg-amber-500" : "bg-emerald-500"}`} /><div className="min-w-0 flex-1"><p className="font-black">{action.title}</p><p className="truncate text-xs font-semibold text-[var(--muted)]">{action.detail}</p></div></div><div className="mt-3 flex gap-2"><Link className="btn-secondary flex-1 px-3 py-2 text-xs" href={`/documents/${action.document.id}`}>{copy({ en: "Open", zh: "打开", vi: "Mở", ar: "فتح" })}<ArrowRight className="h-3.5 w-3.5" /></Link>{action.kind === "remind" ? <button className="icon-btn" disabled={busy === action.key} onClick={() => handleReminder(action)} title={copy({ en: "Send reminder", zh: "发送提醒", vi: "Gửi nhắc nhở", ar: "إرسال تذكير" })} type="button">{busy === action.key ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}</button> : null}<button className="icon-btn" disabled={busy === `copy:${action.document.id}`} onClick={() => handleCopyLink(action.document)} title={copy({ en: "Copy secure link", zh: "复制安全链接", vi: "Sao chép liên kết", ar: "نسخ الرابط" })} type="button"><Copy className="h-4 w-4" /></button>{action.document.type === "invoice" && action.document.status !== "paid" ? <button className="icon-btn text-[var(--mint-dark)]" disabled={busy === `paid:${action.document.id}`} onClick={() => markPaid(action.document)} title={copy({ en: "Mark paid", zh: "标记付款", vi: "Đánh dấu đã thanh toán", ar: "تحديد كمدفوع" })} type="button"><CheckCircle2 className="h-4 w-4" /></button> : null}</div></article>)}</div>}</div>
       </section>
